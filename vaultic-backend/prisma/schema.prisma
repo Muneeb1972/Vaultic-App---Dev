@@ -1,0 +1,115 @@
+// Vaultic backend Prisma schema — design §3.2.2, Task 17.
+//
+// Models: Treasury, Employee, PayrollRun, Claim, AuditLog + DWalletStatus enum.
+// The Treasury model carries dWallet tracking fields per Req 28 so the API
+// can expose DKG lifecycle state to the frontend (pending → in-progress →
+// ready → failed).
+//
+// NOTE on migrations: this task only runs `prisma generate` to validate the
+// schema and emit the client. `prisma migrate dev --name init` requires a
+// live Postgres instance (Neon in production, local Docker in dev) that is
+// not available during scaffolding. The first real migration is produced
+// at deploy time once `DATABASE_URL` points at a reachable database —
+// see design §10.5 (env) and the deployment runbook.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Runtime queries — pooled endpoint (pgbouncer-compatible).
+  url       = env("DATABASE_URL")
+  // Schema migrations — unpooled endpoint. Prisma transactions and DDL
+  // don't work reliably through pgbouncer, so `prisma migrate` and
+  // `prisma db push` must go direct. See Neon + Prisma integration docs.
+  directUrl = env("DIRECT_URL")
+}
+
+model Treasury {
+  id              String   @id @default(cuid())
+  onchainAddress  String   @unique // Treasury_Config PDA
+  authorityWallet String
+  name            String
+  createdAt       DateTime @default(now())
+
+  // dWallet tracking (Req 28)
+  dwalletPubkey    String?
+  dwalletCurveType Int?
+  dwalletStatus    DWalletStatus @default(Pending)
+  dkgStartedAt     DateTime?
+  dkgCompletedAt   DateTime?
+
+  employees   Employee[]
+  payrollRuns PayrollRun[]
+  claims      Claim[]
+  auditLogs   AuditLog[]
+}
+
+enum DWalletStatus {
+  Pending
+  InProgress
+  Ready
+  Failed
+}
+
+model Employee {
+  id             String   @id @default(cuid())
+  onchainAddress String   @unique // EmployeeRecord PDA
+  treasuryId     String
+  treasury       Treasury @relation(fields: [treasuryId], references: [id])
+  walletAddress  String
+  name           String
+  email          String?
+  createdAt      DateTime @default(now())
+  claims         Claim[]
+
+  @@index([treasuryId])
+  @@index([walletAddress])
+}
+
+model PayrollRun {
+  id                 String   @id @default(cuid())
+  treasuryId         String
+  treasury           Treasury @relation(fields: [treasuryId], references: [id])
+  onchainAddress     String   @unique // PayrollExecution PDA
+  executionId        BigInt
+  status             String // Pending|Processing|Completed|Failed
+  timestamp          DateTime @default(now())
+  employeesProcessed Int
+  ikaMessageHash     String?
+
+  @@index([treasuryId])
+}
+
+model Claim {
+  id             String    @id @default(cuid())
+  employeeId     String
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+  treasuryId     String
+  treasury       Treasury  @relation(fields: [treasuryId], references: [id])
+  onchainAddress String    @unique // ClaimRecord PDA
+  amount         BigInt
+  targetChain    Int
+  status         String // Pending|IkaApproved|Executed|Failed
+  ikaMessageHash String?
+  ikaSignature   String?
+  submittedAt    DateTime  @default(now())
+  processedAt    DateTime?
+
+  @@index([employeeId])
+  @@index([treasuryId])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  actionType  String // PAYROLL_EXECUTED, CLAIM_SUBMITTED, POLICY_CHANGED, ...
+  actorWallet String
+  treasuryId  String?
+  treasury    Treasury? @relation(fields: [treasuryId], references: [id])
+  metadata    Json
+  timestamp   DateTime  @default(now())
+
+  @@index([treasuryId])
+  @@index([timestamp])
+}

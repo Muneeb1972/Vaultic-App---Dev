@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * shadcn/ui expects its tokens as HSL triplets inside CSS variables so
+ * utilities like `hsl(var(--primary) / 0.9)` can tint them. The brand
+ * palette from design §3.3.4 maps into these slots:
+ *
+ *   background #0a0a0f  → 240 30% 5%
+ *   card       #111827  → 220 39% 11%
+ *   border     #1f2937  → 215 28% 17%
+ *   primary    #3b82f6  → 217 91% 60%
+ *   accent     #6366f1  → 239 84% 67%
+ *
+ * The entire app is dark-mode only (Req 13.4 / 30.2), so we emit the same
+ * values in `:root` and `.dark`.
+ */
+
+@layer base {
+  :root,
+  .dark {
+    --background: 240 30% 5%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 39% 11%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 39% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 239 84% 67%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

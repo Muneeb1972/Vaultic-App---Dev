@@ -1,0 +1,27 @@
+# Tarpaulin coverage configuration (Task 14.2).
+#
+# Scope: ONLY the host-testable Rust surface — `vaultic-proptest` and the
+# pure-Rust `sim.rs` simulators it covers. The on-chain `vaultic` crate
+# compiles to BPF and its code paths are verified by the Mocha
+# integration suite running against devnet (Task 14.1, `anchor test`);
+# tarpaulin can't instrument BPF-only code from a host run, so including
+# it would artificially pin coverage at ~13% regardless of real test
+# quality.
+#
+# To run:
+#   cargo tarpaulin --config tarpaulin.toml
+#
+# Or from the root package.json / Anchor CLI integration.
+
+[default]
+packages = ["vaultic-proptest"]
+fail-under = 80
+skip-clean = true
+
+# Tarpaulin's workspace walk includes every source file under every
+# member crate by default. Exclude the on-chain crate entirely so the
+# coverage denominator only counts host-testable lines.
+exclude-files = [
+    "target/*",
+    "programs/*",
+]

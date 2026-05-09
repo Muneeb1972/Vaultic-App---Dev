@@ -1,0 +1,71 @@
+# Rust / Anchor
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Node
+node_modules/
+dist/
+.next/
+out/
+coverage/
+.turbo/
+
+# Solana / Anchor
+test-ledger/
+.anchor/
+**/target/deploy/*.json
+!**/target/deploy/vaultic-keypair.json
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.deployed
+**/.env
+!**/.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test output
+.vitest-cache/
+playwright-report/
+test-results/
+tests-e2e/.auth/
+
+# Documentation & specs
+*.md
+README*
+KNOWN_ISSUES*
+VERIFICATION*
+DEPLOY_NOTES*
+.kiro/
+*.pdf
+*.pptx
+*.py
+
+# Test files
+**/tests/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+jest.config.*
+vitest.config.*
+
+# Shell scripts
+*.sh

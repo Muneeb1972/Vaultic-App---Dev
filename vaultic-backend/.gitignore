@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+.env.production
+.env.deployed
+
+# Prisma generated client
+src/generated/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

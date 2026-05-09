@@ -1,0 +1,69 @@
+[package]
+name = "vaultic"
+version = "0.1.0"
+description = "Vaultic Treasury OS — privacy-first encrypted bridgeless treasury program"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "vaultic"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+# `init-if-needed` is enabled for `set_payroll_config` (design §3.1.1.6 / task
+# 9.1) so a single instruction can create the `PayrollConfig` PDA on first
+# call and update it in place afterwards. Anchor's macro keeps the usual
+# init-vs-load safety checks; it does not bypass ownership or seed
+# verification.
+anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+
+# Keccak-256 for Ika `approve_message` digest (design §6.2). Anchor 0.32 does
+# not re-export `solana_program::keccak`, so we pull the standalone hasher
+# crate directly. The `sha3` feature is required so the helper works in
+# non-Solana targets (unit tests on host); on-chain it uses a syscall.
+solana-keccak-hasher = { version = "3.1", default-features = false, features = ["sha3"] }
+
+# Encrypt (FHE) — pre-alpha, sourced from GitHub.
+#
+# Dependencies broken down:
+#   - encrypt-types: scalar DSL markers (EUint64, PUint64, EBool, Uint64, Bool)
+#     used by the #[encrypt_fn] macro in src/fhe/mod.rs AND by our hand-rolled
+#     ciphertext/DecryptionRequest account parsers.
+#   - encrypt-dsl: the #[encrypt_fn] proc macro that compiles our FHE
+#     graph functions at build time + the EncryptCpi trait the generated
+#     code expects.
+#
+# We deliberately do NOT depend on `encrypt-anchor` or `encrypt-native`.
+# Both of those transitively pull in `solana-program` v3+ (v4 via encrypt-anchor,
+# v3 via encrypt-native), which has a different `AccountInfo<'info>` and
+# `ProgramError` type than the v2 used by `anchor-lang = 0.32`. The Rust
+# type system treats the two versions as distinct, so any call that crosses
+# the boundary refuses to compile.
+#
+# Instead, we implement the EncryptCpi trait ourselves in src/encrypt/mod.rs,
+# against anchor-lang's `AccountInfo<'info>`. The blanket impl in the
+# #[encrypt_fn] macro-generated `*Cpi` traits makes all the graph CPI
+# methods available automatically. See src/encrypt/mod.rs for the impl.
+encrypt-types = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+encrypt-dsl = { package = "encrypt-solana-dsl", git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+# Used directly by src/encrypt/mod.rs for the hand-rolled EncryptCpi impl —
+# we need access to its account layout constants (CT_LEN, CT_FHE_TYPE, etc.)
+# and the parse_* byte readers.
+encrypt-solana-types = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+
+# Ika (dWallets) — used via RAW CPI only; we do NOT depend on ika-dwallet-anchor
+# because it targets anchor-lang 1.0 which conflicts with Encrypt's 0.32.
+# Raw CPI needs only what anchor-lang already re-exports from solana-program.
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

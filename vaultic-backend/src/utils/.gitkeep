@@ -1,0 +1,3 @@
+# Shared utilities.
+# - logger.ts    (Task 16.1, scaffolded)
+# - signature.ts (Task 18.3, nacl.sign.detached.verify)

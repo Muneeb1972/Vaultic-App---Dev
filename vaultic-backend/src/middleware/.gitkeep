@@ -1,0 +1,5 @@
+# Express middleware lands here in Task 18.
+# - cors.ts       (Task 18.1)
+# - rateLimit.ts  (Task 18.2)
+# - auth.ts       (Task 18.3)
+# - validate.ts   (Task 18.4)

@@ -1,0 +1,27 @@
+{
+  "name": "vaultic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vaultic Treasury OS — privacy-first, encrypted, bridgeless treasury operating system for DAOs on Solana",
+  "packageManager": "pnpm@9.15.9",
+  "workspaces": [
+    "vaultic-backend",
+    "vaultic-frontend"
+  ],
+  "scripts": {
+    "build:contracts": "cd vaultic-contracts && anchor build",
+    "test:contracts": "cd vaultic-contracts && anchor test",
+    "deploy:contracts": "cd vaultic-contracts && anchor deploy --provider.cluster devnet",
+    "build:backend": "pnpm --filter vaultic-backend build",
+    "build:frontend": "pnpm --filter vaultic-frontend build",
+    "dev:backend": "pnpm --filter vaultic-backend dev",
+    "dev:frontend": "pnpm --filter vaultic-frontend dev",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "ci": "pnpm -r run build && pnpm -r run test"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

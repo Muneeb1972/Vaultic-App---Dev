@@ -1,0 +1,6 @@
+# Route handlers land here in Task 20.
+# - treasury.ts   (Task 20.1)
+# - employees.ts  (Task 20.2)
+# - payroll.ts    (Task 20.3)
+# - claims.ts     (Task 20.4)
+# - events.ts     (Task 20.5, SSE)
