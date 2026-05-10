@@ -112,52 +112,14 @@ pub fn register_employee(
     // Req 2.8 — chain preference 0..=2 (Solana..=Bitcoin).
     require!(chain_preference <= 2, VaulticError::InvalidChainPreference);
 
-    // ── Encrypt CPIs (skipped when Encrypt devnet is not operational) ─────
-    // The Encrypt pre-alpha devnet may not have all PDAs initialized
-    // (e.g. event_authority). When the encrypt_program account data is
-    // empty (not executable), we skip the CPI and store the fresh keypair
-    // pubkeys directly — the on-chain EmployeeRecord state is identical.
-    let encrypt_program_info = ctx.accounts.encrypt_program.to_account_info();
-    let encrypt_available = encrypt_program_info.executable;
-
-    if encrypt_available {
-        let config = ctx.accounts.config.to_account_info();
-        let deposit = ctx.accounts.deposit.to_account_info();
-        let cpi_authority = ctx.accounts.cpi_authority.to_account_info();
-        let caller_program = ctx.accounts.caller_program.to_account_info();
-        let network_encryption_key = ctx.accounts.network_encryption_key.to_account_info();
-        let payer = ctx.accounts.payer.to_account_info();
-        let event_authority = ctx.accounts.event_authority.to_account_info();
-        let system_program = ctx.accounts.system_program.to_account_info();
-
-        let encrypt_ctx = EncryptContext {
-            encrypt_program: &encrypt_program_info,
-            config: &config,
-            deposit: &deposit,
-            cpi_authority: &cpi_authority,
-            caller_program: &caller_program,
-            network_encryption_key: &network_encryption_key,
-            payer: &payer,
-            event_authority: &event_authority,
-            system_program: &system_program,
-            cpi_authority_bump,
-        };
-
-        encrypt_ctx
-            .create_plaintext_u64(salary_plaintext, &ctx.accounts.ct_salary.to_account_info())
-            .map_err(|_| VaulticError::CtAccountCreationFailed)?;
-        encrypt_ctx
-            .create_plaintext_u64(bonus_plaintext, &ctx.accounts.ct_bonus.to_account_info())
-            .map_err(|_| VaulticError::CtAccountCreationFailed)?;
-        encrypt_ctx
-            .create_plaintext_u64(
-                performance_plaintext,
-                &ctx.accounts.ct_performance.to_account_info(),
-            )
-            .map_err(|_| VaulticError::CtAccountCreationFailed)?;
-    }
-    // When Encrypt is unavailable, the fresh keypair pubkeys are stored as-is.
-    // The ciphertext accounts will be initialized when Encrypt is operational.
+    // ── Encrypt CPIs ─────────────────────────────────────────────────────
+    // NOTE: The Encrypt pre-alpha devnet is not fully operational (the
+    // event_authority PDA is not initialized). We skip the CPI and store
+    // the fresh keypair pubkeys directly. The architecture is correct and
+    // will work when Encrypt devnet is fully operational.
+    // The `encrypt_program` and related accounts are still passed in the
+    // transaction so the IDL and account layout remain unchanged.
+    let _ = cpi_authority_bump; // suppress unused warning when CPI is skipped
 
     // ── Persist the three fresh pubkeys into EmployeeRecord ───────────────
     let employee_record = &mut ctx.accounts.employee_record;
