@@ -17,7 +17,6 @@
 //! instruction-change list (encrypt-integration Req 12.5 resolved).
 
 use anchor_lang::prelude::*;
-use solana_keccak_hasher::hashv;
 
 use crate::errors::VaulticError;
 use crate::events::{ClaimSubmitted, IkaSigningRequested};
@@ -180,13 +179,12 @@ pub fn submit_claim(ctx: Context<SubmitClaim>, amount: u64, claim_timestamp: i64
 
 /// Accounts for `process_claim` (design §3.1.1.14).
 ///
-/// Admin-gated via `has_one = authority` on `treasury`. Mirrors the Ika
-/// CPI account set used by `approve_payroll_message`; `employee_record`
-/// is carried so the Phase 2 `total_claimed` bump (deferred to a Phase
-/// 1.5 follow-up) can execute in the same instruction once the
-/// MessageApproval layout is pinned.
+/// Admin-gated via `has_one = authority` on `treasury`. Uses the corrected
+/// 5-account Ika CPI layout from the upstream pre-alpha docs.
+/// The `MessageApproval` PDA is derived from
+/// `["message_approval", dwallet_pubkey, message_hash]` under the Ika program.
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
+#[instruction(message_approval_bump: u8, cpi_authority_bump: u8)]
 pub struct ProcessClaim<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -200,26 +198,23 @@ pub struct ProcessClaim<'info> {
     #[account(mut, has_one = treasury @ VaulticError::Unauthorized)]
     pub claim_record: Account<'info, ClaimRecord>,
 
-    // ── Ika CPI accounts (7) ──────────────────────────────────────────────
-    /// CHECK: Ika program id; validated by the Ika runtime.
-    pub ika_program: UncheckedAccount<'info>,
-    /// CHECK: Ika DWalletCoordinator PDA (writable).
-    #[account(mut)]
-    pub coordinator: UncheckedAccount<'info>,
-    /// CHECK: MessageApproval account the Ika CPI initialises (writable).
+    // ── Ika CPI accounts (5 — corrected from upstream docs) ──────────────
+    /// CHECK: MessageApproval PDA — seeds ["message_approval", dwallet, message_hash]
+    /// under the Ika program. Writable so Ika can initialise it.
     #[account(mut)]
     pub message_approval: UncheckedAccount<'info>,
-    /// CHECK: dwallet account owned by the Ika program.
+
+    /// CHECK: dWallet account owned by the Ika program.
     pub dwallet: UncheckedAccount<'info>,
-    /// CHECK: this program's executable account.
-    pub caller_program: UncheckedAccount<'info>,
-    /// CHECK: PDA `[IKA_CPI_AUTHORITY_SEED]` of THIS program.
+
+    /// CHECK: PDA `[IKA_CPI_AUTHORITY_SEED]` of THIS program — signs via invoke_signed.
     #[account(
         seeds = [ika::IKA_CPI_AUTHORITY_SEED],
         bump = cpi_authority_bump,
     )]
     pub ika_cpi_authority: UncheckedAccount<'info>,
-    /// CHECK: signer that pays rent for the MessageApproval account.
+
+    /// Pays rent for the MessageApproval account.
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -228,34 +223,14 @@ pub struct ProcessClaim<'info> {
 
 pub fn process_claim(
     ctx: Context<ProcessClaim>,
+    message_approval_bump: u8,
     cpi_authority_bump: u8,
     message: Vec<u8>,
 ) -> Result<()> {
-    // Req 1.6 — inactive treasury blocks everything except `update_treasury`.
     require!(
         ctx.accounts.treasury.is_active,
         VaulticError::TreasuryInactive
     );
-
-    // ────────────────────────────────────────────────────────────────────
-    // FOLLOW-UP — Phase 2 finalization (design §3.1.1.14).
-    //
-    // The second half of the design (reading the Ika MessageApproval's
-    // `Signed` status, copying the signature bytes into
-    // `claim_record.ika_signature`, incrementing
-    // `employee_record.total_claimed`, and transitioning
-    // `status = Executed`) requires knowing the byte offsets of the
-    // MessageApproval account layout, which lives in the
-    // `ika-dwallet-anchor` crate. That crate targets anchor-lang 1.0 and
-    // cannot be imported today without forking the Encrypt pin (see the
-    // crate-root FOLLOW-UP in `crate::fhe`).
-    //
-    // Phase 1 MVP (this code path) therefore only implements the forward
-    // approval: we request Ika signing, stamp
-    // `claim_record.ika_message_hash`, and transition to `IkaApproved`.
-    // A `finalize_claim` admin instruction will be added in Phase 1.5 to
-    // read the signed status and complete the state machine.
-    // ────────────────────────────────────────────────────────────────────
     require!(
         ctx.accounts.claim_record.status == ClaimStatus::Pending,
         VaulticError::Unauthorized
@@ -265,24 +240,20 @@ pub fn process_claim(
         VaulticError::Unauthorized
     );
 
-    let message_hash = hashv(&[message.as_slice()]).to_bytes();
-
-    // Req 7.2 / 9.7 — raw CPI to Ika `approve_message`.
-    let stored_digest = ika::approve_message_cpi(
-        ctx.accounts.coordinator.to_account_info(),
+    // Derive the message hash for storage — approve_message_cpi returns it.
+    let message_hash = ika::approve_message_cpi(
         ctx.accounts.message_approval.to_account_info(),
         ctx.accounts.dwallet.to_account_info(),
-        ctx.accounts.caller_program.to_account_info(),
         ctx.accounts.ika_cpi_authority.to_account_info(),
         ctx.accounts.payer.to_account_info(),
         ctx.accounts.system_program.to_account_info(),
+        message_approval_bump,
         cpi_authority_bump,
         &message,
-        [0u8; 32], // no metadata digest for claim messages
         ctx.accounts.claim_record.employee,
-        u16::from(ctx.accounts.treasury.dwallet_curve_type),
+        // signature_scheme: 0 = Ed25519 (default for Solana wallets)
+        u16::from(ctx.accounts.treasury.dwallet_curve_type) as u8,
     )?;
-    debug_assert_eq!(stored_digest, message_hash);
 
     let claim = &mut ctx.accounts.claim_record;
     claim.ika_message_hash = message_hash;
@@ -293,6 +264,80 @@ pub fn process_claim(
         message_hash,
         target_chain: claim.target_chain,
     });
+
+    Ok(())
+}
+
+// --------------------------------------------------------------------------
+// finalize_claim — Phase 2 completion (Req 9.8)
+//
+// Reads the MessageApproval account after the Ika MPC network has produced
+// a signature. Copies the signature bytes into ClaimRecord.ika_signature,
+// increments employee_record.total_claimed, and transitions the claim to
+// Executed.
+//
+// The MessageApproval account layout (from upstream docs):
+//   offset 139: status u8 (0=Pending, 1=Signed)
+//   offset 140: signature_len u16 LE
+//   offset 142: signature bytes
+// --------------------------------------------------------------------------
+
+/// Accounts for `finalize_claim`.
+///
+/// Admin-gated. The `message_approval` account is the same PDA that was
+/// initialised by `process_claim`; we read its raw bytes to extract the
+/// Ika-produced signature.
+#[derive(Accounts)]
+pub struct FinalizeClaim<'info> {
+    pub authority: Signer<'info>,
+
+    #[account(has_one = authority @ VaulticError::Unauthorized)]
+    pub treasury: Account<'info, TreasuryConfig>,
+
+    #[account(mut, has_one = treasury @ VaulticError::Unauthorized)]
+    pub employee_record: Account<'info, EmployeeRecord>,
+
+    #[account(mut, has_one = treasury @ VaulticError::Unauthorized)]
+    pub claim_record: Account<'info, ClaimRecord>,
+
+    /// CHECK: MessageApproval PDA — same account initialised by process_claim.
+    /// We read its raw bytes to check status and extract the signature.
+    pub message_approval: UncheckedAccount<'info>,
+}
+
+pub fn finalize_claim(ctx: Context<FinalizeClaim>) -> Result<()> {
+    require!(
+        ctx.accounts.treasury.is_active,
+        VaulticError::TreasuryInactive
+    );
+    // Only IkaApproved claims can be finalized.
+    require!(
+        ctx.accounts.claim_record.status == ClaimStatus::IkaApproved,
+        VaulticError::Unauthorized
+    );
+
+    // Read the MessageApproval account raw bytes and extract the signature.
+    let approval_info = ctx.accounts.message_approval.to_account_info();
+    let approval_data = approval_info.try_borrow_data()?;
+    let sig_bytes = ika::read_message_approval_signature(&approval_data)?;
+    drop(approval_data);
+
+    // Copy up to 96 bytes of signature into the fixed ClaimRecord slot.
+    let mut sig_arr = [0u8; 96];
+    let copy_len = sig_bytes.len().min(96);
+    sig_arr[..copy_len].copy_from_slice(&sig_bytes[..copy_len]);
+
+    // Persist signature and transition state.
+    let claim = &mut ctx.accounts.claim_record;
+    claim.ika_signature = sig_arr;
+    claim.status = ClaimStatus::Executed;
+
+    // Increment total_claimed — this is the Phase 2 completion step that
+    // was deferred in the original process_claim implementation.
+    let employee = &mut ctx.accounts.employee_record;
+    employee.total_claimed = employee
+        .total_claimed
+        .saturating_add(claim.amount_claimed);
 
     Ok(())
 }

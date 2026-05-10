@@ -257,10 +257,15 @@ pub mod vaultic {
 
     pub fn process_claim(
         ctx: Context<ProcessClaim>,
+        message_approval_bump: u8,
         cpi_authority_bump: u8,
         message: Vec<u8>,
     ) -> Result<()> {
-        instructions::claim::process_claim(ctx, cpi_authority_bump, message)
+        instructions::claim::process_claim(ctx, message_approval_bump, cpi_authority_bump, message)
+    }
+
+    pub fn finalize_claim(ctx: Context<FinalizeClaim>) -> Result<()> {
+        instructions::claim::finalize_claim(ctx)
     }
 
     // -------------------------------------------------------------------

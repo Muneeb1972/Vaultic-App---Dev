@@ -77,6 +77,12 @@ pub enum VaulticError {
     #[msg("Ika signing failed")]
     IkaSigningFailed,
 
+    /// Req 7.5 — `MessageApproval` account status is still `Pending` (0).
+    /// The Ika network has not yet produced a signature. Caller should retry
+    /// `finalize_claim` after the Ika MPC round completes.
+    #[msg("Ika signature is still pending — retry after MPC round completes")]
+    IkaSigningPending,
+
     // ---- Implementation-specific helpers ----
     /// Req 8.1 implementation guard — `required_approvers <= 5` and
     /// `required_approvers <= non_zero_approver_count`.

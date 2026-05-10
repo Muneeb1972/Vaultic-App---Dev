@@ -29,10 +29,10 @@
 //! can retry after the decryptor finishes writing.
 
 use anchor_lang::prelude::*;
+use solana_keccak_hasher::hash;
 
 use crate::errors::VaulticError;
 use crate::events::{DecryptionRequested, SalaryRevealed};
-use crate::fhe;
 use crate::state::{EmployeeRecord, TreasuryConfig};
 
 // --------------------------------------------------------------------------
@@ -135,36 +135,26 @@ pub fn request_salary_decryption(
         VaulticError::EmployeeInactive
     );
 
-    // Req 5.1 — CPI to the Encrypt program (design §3.1.1.10). Build the
-    // `EncryptContext` struct literal from our accounts; `to_account_info`
-    // values are bound to `let`s so the `&` references in the struct don't
-    // point at temporaries.
-    let encrypt_program = ctx.accounts.encrypt_program.to_account_info();
-    let config = ctx.accounts.config.to_account_info();
-    let deposit = ctx.accounts.deposit.to_account_info();
-    let cpi_authority = ctx.accounts.encrypt_cpi_authority.to_account_info();
-    let caller_program = ctx.accounts.caller_program.to_account_info();
-    let network_encryption_key = ctx.accounts.network_encryption_key.to_account_info();
-    let payer = ctx.accounts.authority.to_account_info();
-    let event_authority = ctx.accounts.event_authority.to_account_info();
-    let system_program = ctx.accounts.system_program.to_account_info();
-    let encrypt_ctx = crate::encrypt::EncryptContext {
-        encrypt_program: &encrypt_program,
-        config: &config,
-        deposit: &deposit,
-        cpi_authority: &cpi_authority,
-        caller_program: &caller_program,
-        network_encryption_key: &network_encryption_key,
-        payer: &payer,
-        event_authority: &event_authority,
-        system_program: &system_program,
+    // DEVNET WORKAROUND: The Encrypt pre-alpha devnet program's
+    // `event_authority` PDA has never been initialized by the upstream team,
+    // so every CPI into Encrypt fails. Skip the `request_decryption` CPI
+    // and store a synthetic digest (keccak of the ct_salary pubkey) so
+    // `reveal_salary` has a non-zero pending_digest to check against.
+    // Remove this block once the upstream team initializes the Encrypt
+    // event_authority PDA.
+    let _ = (
+        ctx.accounts.encrypt_program.key(),
+        ctx.accounts.config.key(),
+        ctx.accounts.deposit.key(),
+        ctx.accounts.encrypt_cpi_authority.key(),
+        ctx.accounts.caller_program.key(),
+        ctx.accounts.network_encryption_key.key(),
+        ctx.accounts.event_authority.key(),
+        ctx.accounts.decryption_request.key(),
         cpi_authority_bump,
-    };
-    let ct_salary_info = ctx.accounts.ct_salary.to_account_info();
-    let decryption_request_info = ctx.accounts.decryption_request.to_account_info();
-    let digest: [u8; 32] =
-        fhe::request_decryption_cpi(&encrypt_ctx, &ct_salary_info, &decryption_request_info)
-            .map_err(|_| VaulticError::FHEExecutionFailed)?;
+    );
+    // Use keccak of the ct_salary pubkey as a deterministic synthetic digest.
+    let digest: [u8; 32] = hash(ctx.accounts.ct_salary.key().as_ref()).to_bytes();
 
     // Req 5.2 — snapshot the ciphertext digest for later verification by
     // `reveal_salary`. A non-zero `pending_digest` after this instruction
@@ -233,17 +223,14 @@ pub fn reveal_salary(ctx: Context<RevealSalary>) -> Result<()> {
         VaulticError::EmployeeInactive
     );
 
-    // Reqs 5.3, 5.6, 5.7 — borrow the DecryptionRequest raw data and call
-    // into the Encrypt helper. Both "not yet fully written"
-    // (bytes_written < total_len) and "digest mismatch" map to
-    // `DecryptionNotComplete`, per the upstream `read_decrypted_verified`
-    // contract (see `crate::encrypt::read_decrypted_verified` docs).
-    let req_info = ctx.accounts.decryption_request.to_account_info();
-    let req_data = req_info.try_borrow_data()?;
-    let salary: u64 =
-        fhe::read_decrypted_verified_cpi(&req_data, ctx.accounts.employee_record.pending_digest)
-            .map_err(|_| VaulticError::DecryptionNotComplete)?;
-    drop(req_data);
+    // DEVNET WORKAROUND: The Encrypt pre-alpha devnet program's executor
+    // never processes decryption requests (event_authority PDA not initialized).
+    // Skip `read_decrypted_verified` and return 0 as a placeholder salary.
+    // The `pending_digest` is still zeroed for replay protection.
+    // Remove this block once the upstream team initializes the Encrypt
+    // event_authority PDA and the executor is processing requests.
+    let _ = ctx.accounts.decryption_request.key();
+    let salary: u64 = 0;
 
     // ────────────────────────────────────────────────────────────────────
     // PRIVACY INVARIANT — Req 5.4 (DO NOT WEAKEN).

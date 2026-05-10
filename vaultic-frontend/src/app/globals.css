@@ -2,21 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * shadcn/ui expects its tokens as HSL triplets inside CSS variables so
- * utilities like `hsl(var(--primary) / 0.9)` can tint them. The brand
- * palette from design §3.3.4 maps into these slots:
- *
- *   background #0a0a0f  → 240 30% 5%
- *   card       #111827  → 220 39% 11%
- *   border     #1f2937  → 215 28% 17%
- *   primary    #3b82f6  → 217 91% 60%
- *   accent     #6366f1  → 239 84% 67%
- *
- * The entire app is dark-mode only (Req 13.4 / 30.2), so we emit the same
- * values in `:root` and `.dark`.
- */
-
 @layer base {
   :root,
   .dark {
@@ -68,4 +53,135 @@
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-18px) rotate(1deg); }
+  66%       { transform: translateY(-8px) rotate(-1deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%       { opacity: 0.7; transform: scale(1.08); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; }
+  50%       { opacity: 1; }
+}
+
+@keyframes grid-move {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(60px); }
+}
+
+@keyframes border-glow {
+  0%, 100% { border-color: rgba(99, 102, 241, 0.3); box-shadow: 0 0 12px rgba(99,102,241,0.15); }
+  50%       { border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 28px rgba(59,130,246,0.3); }
+}
+
+.animate-float        { animation: float 7s ease-in-out infinite; }
+.animate-float-slow   { animation: float 10s ease-in-out infinite; }
+.animate-float-fast   { animation: float 5s ease-in-out infinite; }
+.animate-pulse-glow   { animation: pulse-glow 4s ease-in-out infinite; }
+.animate-shimmer      { animation: shimmer 3s linear infinite; }
+.animate-fade-up      { animation: fade-up 0.8s ease-out forwards; }
+.animate-fade-in      { animation: fade-in 1.2s ease-out forwards; }
+.animate-spin-slow    { animation: spin-slow 20s linear infinite; }
+.animate-twinkle      { animation: twinkle 3s ease-in-out infinite; }
+.animate-grid-move    { animation: grid-move 8s linear infinite; }
+.animate-border-glow  { animation: border-glow 3s ease-in-out infinite; }
+
+.delay-100  { animation-delay: 0.1s; }
+.delay-200  { animation-delay: 0.2s; }
+.delay-300  { animation-delay: 0.3s; }
+.delay-400  { animation-delay: 0.4s; }
+.delay-500  { animation-delay: 0.5s; }
+.delay-600  { animation-delay: 0.6s; }
+.delay-700  { animation-delay: 0.7s; }
+.delay-1000 { animation-delay: 1s; }
+.delay-1500 { animation-delay: 1.5s; }
+.delay-2000 { animation-delay: 2s; }
+.delay-3000 { animation-delay: 3s; }
+.delay-4000 { animation-delay: 4s; }
+
+/* ── Gradient text ──────────────────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 40%, #818cf8 70%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-gold {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #fcd34d 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Glassmorphism ──────────────────────────────────────────────────────── */
+.glass {
+  background: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-bright {
+  background: rgba(30, 41, 59, 0.5);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* ── Shimmer button ─────────────────────────────────────────────────────── */
+.btn-shimmer {
+  background: linear-gradient(
+    90deg,
+    #4f46e5 0%,
+    #6366f1 20%,
+    #818cf8 40%,
+    #6366f1 60%,
+    #4f46e5 80%,
+    #6366f1 100%
+  );
+  background-size: 200% auto;
+}
+
+.btn-shimmer:hover {
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* ── Noise texture overlay ──────────────────────────────────────────────── */
+.noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
 }

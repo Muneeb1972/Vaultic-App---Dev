@@ -45,7 +45,6 @@ use anchor_lang::prelude::*;
 use crate::encrypt::is_committed;
 use crate::errors::VaulticError;
 use crate::events::{FHEComputationRequested, PayrollExecutionCompleted, PayrollExecutionStarted};
-use crate::fhe;
 use crate::state::{
     EmployeeRecord, PayrollConfig, PayrollExecution, PayrollStatus, TreasuryConfig,
 };
@@ -71,7 +70,6 @@ use crate::state::{
 /// Accounts for `set_payroll_band_mins` — initializes the five band_min
 /// ciphertext slots (Junior, Mid, Senior, Lead, Executive).
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct SetPayrollBandMins<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -116,7 +114,7 @@ pub struct SetPayrollBandMins<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of THIS program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: This program's own executable account.
@@ -186,7 +184,6 @@ pub fn set_payroll_band_mins(
 /// Accounts for `set_payroll_band_maxs` — initializes the five band_max
 /// ciphertext slots (Junior, Mid, Senior, Lead, Executive).
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct SetPayrollBandMaxs<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -231,7 +228,7 @@ pub struct SetPayrollBandMaxs<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of THIS program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: This program's own executable account.
@@ -300,7 +297,6 @@ pub fn set_payroll_band_maxs(
 /// Accounts for `set_payroll_threshold` — initializes the performance
 /// threshold ciphertext slot and sets `bonus_multiplier_bps`.
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct SetPayrollThreshold<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -333,7 +329,7 @@ pub struct SetPayrollThreshold<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of THIS program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: This program's own executable account.
@@ -398,7 +394,7 @@ pub fn set_payroll_threshold(
 /// Account ordering: domain accounts first, then the 10 Encrypt CPI
 /// context accounts, then the 6 ciphertext accounts (5 inputs + 1 output).
 #[derive(Accounts)]
-#[instruction(execution_id: u64, cpi_authority_bump: u8)]
+#[instruction(execution_id: u64)]
 pub struct ExecutePayroll<'info> {
     #[account(mut, has_one = authority @ VaulticError::Unauthorized)]
     pub treasury: Account<'info, TreasuryConfig>,
@@ -435,7 +431,7 @@ pub struct ExecutePayroll<'info> {
     /// Encrypt program treats this as the caller's authority signer.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: this program itself (Encrypt uses it to derive `caller_program`).
@@ -479,67 +475,38 @@ pub fn execute_payroll_computation(
     execution_id: u64,
     cpi_authority_bump: u8,
 ) -> Result<()> {
+    msg!("execute_payroll_computation: start");
     // Req 1.6 — inactive treasury blocks all non-`update_treasury` paths.
     require!(
         ctx.accounts.treasury.is_active,
         VaulticError::TreasuryInactive
     );
+    msg!("execute_payroll_computation: treasury active");
 
     let now = Clock::get()?.unix_timestamp;
-    // Req 4.1 / 4.2 — enforce the minimum interval between runs. The
-    // request-time anchor (`last_payroll_timestamp = now` below) means an
-    // in-flight async FHE computation still counts as "the latest run"
-    // for interval purposes — see design §3.1.1.7 "Async completion model".
+    msg!("execute_payroll_computation: now={} last={} interval={}", now, ctx.accounts.treasury.last_payroll_timestamp, ctx.accounts.treasury.payroll_interval);
     require!(
         now.saturating_sub(ctx.accounts.treasury.last_payroll_timestamp)
             >= ctx.accounts.treasury.payroll_interval,
         VaulticError::PayrollIntervalNotElapsed
     );
+    msg!("execute_payroll_computation: interval check passed");
 
-    // CPI to the Encrypt program (design §3.1.1.7). Build the
-    // `EncryptContext` struct literal from our accounts; `to_account_info`
-    // values are bound to `let`s so the `&` references in the struct don't
-    // point at temporaries.
-    //
-    // `compute_total_payout(salary, bonus, vested) -> EUint64` — the DSL
-    // macro compiles one AccountInfo per encrypted input plus one per
-    // encrypted output. We use `ct_bonus` as the `bonus` slot and
-    // `ct_performance` as the current proxy for the `vested` slot pending
-    // the dedicated vested-amount wiring in Task 11.3.
-    let encrypt_program = ctx.accounts.encrypt_program.to_account_info();
-    let config = ctx.accounts.config.to_account_info();
-    let deposit = ctx.accounts.deposit.to_account_info();
-    let cpi_authority = ctx.accounts.cpi_authority.to_account_info();
-    let caller_program = ctx.accounts.caller_program.to_account_info();
-    let network_encryption_key = ctx.accounts.network_encryption_key.to_account_info();
-    let payer = ctx.accounts.payer.to_account_info();
-    let event_authority = ctx.accounts.event_authority.to_account_info();
-    let system_program = ctx.accounts.system_program.to_account_info();
-    let encrypt_ctx = crate::encrypt::EncryptContext {
-        encrypt_program: &encrypt_program,
-        config: &config,
-        deposit: &deposit,
-        cpi_authority: &cpi_authority,
-        caller_program: &caller_program,
-        network_encryption_key: &network_encryption_key,
-        payer: &payer,
-        event_authority: &event_authority,
-        system_program: &system_program,
+    // DEVNET WORKAROUND
+    let _ = (
+        ctx.accounts.encrypt_program.key(),
+        ctx.accounts.config.key(),
+        ctx.accounts.deposit.key(),
+        ctx.accounts.cpi_authority.key(),
+        ctx.accounts.caller_program.key(),
+        ctx.accounts.network_encryption_key.key(),
+        ctx.accounts.event_authority.key(),
         cpi_authority_bump,
-    };
-    fhe::compute_total_payout_cpi(
-        &encrypt_ctx,
-        ctx.accounts.ct_salary.to_account_info(),
-        ctx.accounts.ct_bonus.to_account_info(),
-        ctx.accounts.ct_performance.to_account_info(),
-        ctx.accounts.ct_total_out.to_account_info(),
-    )
-    .map_err(|_| VaulticError::FHEExecutionFailed)?;
+    );
+    msg!("execute_payroll_computation: workaround block done");
 
-    // Req 4.3 — open the PayrollExecution in `Processing`. `set_inner`
-    // keeps the assignment atomic and documents the full field set in one
-    // place.
     let treasury_key = ctx.accounts.treasury.key();
+    msg!("execute_payroll_computation: about to set_inner");
     ctx.accounts.payroll_execution.set_inner(PayrollExecution {
         treasury: treasury_key,
         execution_id,
@@ -552,11 +519,10 @@ pub fn execute_payroll_computation(
         policy_digest: [0; 32],
         bump: ctx.bumps.payroll_execution,
     });
+    msg!("execute_payroll_computation: set_inner done");
 
-    // Req 4.9 — request-time anchor. Setting this here prevents the
-    // interval guard from re-triggering while the async FHE run is still
-    // in flight (see design §3.1.1.7 note).
     ctx.accounts.treasury.last_payroll_timestamp = now;
+    msg!("execute_payroll_computation: timestamp updated, returning Ok");
 
     emit!(PayrollExecutionStarted {
         treasury: treasury_key,
@@ -653,7 +619,6 @@ pub fn finalize_payroll(ctx: Context<FinalizePayroll>, _execution_id: u64) -> Re
 // --------------------------------------------------------------------------
 
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct ComputeBonus<'info> {
     #[account(has_one = authority @ VaulticError::Unauthorized)]
     pub treasury: Account<'info, TreasuryConfig>,
@@ -673,7 +638,7 @@ pub struct ComputeBonus<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of this program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: this program itself.
@@ -716,42 +681,21 @@ pub fn compute_bonus(
         VaulticError::EmployeeInactive
     );
 
-    // `compute_bonus_amount(base, perf, threshold, bonus_multiplier_bps: PUint64)`
-    // folds the PUint64 multiplier into the graph at compile time — it is
-    // not passed through the CPI. The `_bonus_multiplier_bps: u64`
-    // parameter is accepted for forward compatibility with a future graph
-    // shape and for audit/ledger purposes; the value actually used by the
-    // FHE computation is the one baked into `PayrollConfig.bonus_multiplier_bps`
-    // and picked up by the graph builder at `#[encrypt_fn]` expansion time.
-    let encrypt_program = ctx.accounts.encrypt_program.to_account_info();
-    let config = ctx.accounts.config.to_account_info();
-    let deposit = ctx.accounts.deposit.to_account_info();
-    let cpi_authority = ctx.accounts.cpi_authority.to_account_info();
-    let caller_program = ctx.accounts.caller_program.to_account_info();
-    let network_encryption_key = ctx.accounts.network_encryption_key.to_account_info();
-    let payer = ctx.accounts.payer.to_account_info();
-    let event_authority = ctx.accounts.event_authority.to_account_info();
-    let system_program = ctx.accounts.system_program.to_account_info();
-    let encrypt_ctx = crate::encrypt::EncryptContext {
-        encrypt_program: &encrypt_program,
-        config: &config,
-        deposit: &deposit,
-        cpi_authority: &cpi_authority,
-        caller_program: &caller_program,
-        network_encryption_key: &network_encryption_key,
-        payer: &payer,
-        event_authority: &event_authority,
-        system_program: &system_program,
+    // DEVNET WORKAROUND: Same Encrypt event_authority blocker as
+    // `execute_payroll_computation`. Skip the `compute_bonus_amount` CPI
+    // and record `ct_output_bonus` directly as the bonus ciphertext pubkey.
+    // Remove once the upstream team initializes the Encrypt event_authority PDA.
+    let _ = (
+        ctx.accounts.encrypt_program.key(),
+        ctx.accounts.config.key(),
+        ctx.accounts.deposit.key(),
+        ctx.accounts.cpi_authority.key(),
+        ctx.accounts.caller_program.key(),
+        ctx.accounts.network_encryption_key.key(),
+        ctx.accounts.event_authority.key(),
         cpi_authority_bump,
-    };
-    fhe::compute_bonus_amount_cpi(
-        &encrypt_ctx,
-        ctx.accounts.ct_base_salary.to_account_info(),
-        ctx.accounts.ct_perf.to_account_info(),
-        ctx.accounts.ct_threshold.to_account_info(),
-        ctx.accounts.ct_output_bonus.to_account_info(),
-    )
-    .map_err(|_| VaulticError::FHEExecutionFailed)?;
+        _bonus_multiplier_bps,
+    );
 
     // Req 27.4 — persist the ciphertext pubkey so downstream payroll/decryption
     // instructions can reference the fresh bonus value.
