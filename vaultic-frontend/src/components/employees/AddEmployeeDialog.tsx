@@ -80,16 +80,19 @@ const plaintextSolAmount = z
     { message: "Value exceeds maximum u64 lamports (Req 1.7)" },
   );
 
-/** Hex string up to 128 chars (= 64 bytes). `0x` prefix accepted. */
-const hexString = z
+/** Hex string up to 128 chars (= 64 bytes), OR a base58 Solana pubkey. */
+const hexOrBase58String = z
   .string()
   .min(1, "Required")
   .refine(
     (value) => {
+      // Accept base58 Solana pubkey (32 bytes = fits in 64 bytes)
+      try { new PublicKey(value); return true; } catch {}
+      // Accept hex string (with or without 0x prefix, max 128 hex chars)
       const stripped = value.startsWith("0x") ? value.slice(2) : value;
       return /^[0-9a-fA-F]*$/.test(stripped) && stripped.length <= 128;
     },
-    { message: "Invalid hex (max 64 bytes / 128 hex chars)" },
+    { message: "Enter a Solana address (base58) or hex string (max 64 bytes)" },
   );
 
 const formSchema = z.object({
@@ -103,7 +106,7 @@ const formSchema = z.object({
     }, { message: "Invalid base58 public key" }),
   roleId: z.coerce.number().int().min(0).max(4),
   chainPreference: z.coerce.number().int().min(0).max(2),
-  targetAddressHex: hexString,
+  targetAddressHex: hexOrBase58String,
   // ── NEW: plaintext SOL amounts (Req 1.1) ──
   salarySol: plaintextSolAmount,
   bonusSol: plaintextSolAmount,
@@ -144,7 +147,7 @@ export function AddEmployeeDialog({
       targetAddressHex: "",
       salarySol: "",
       bonusSol: "",
-      performanceSol: "",
+      performanceSol: "1",
       totalAllocationSol: 0,
       vestingStart: new Date().toISOString().slice(0, 10),
       vestingCliffDays: 0,
@@ -164,7 +167,17 @@ export function AddEmployeeDialog({
       setEncryptPhase({ kind: 'Submitting', label: 'Registering employee…' });
 
       const employeeWalletKey = new PublicKey(values.employeeWallet);
-      const targetBytes = padBytes(hexToBytes(values.targetAddressHex), 64);
+
+      // Convert target address: accept base58 Solana pubkey or hex string.
+      let targetBytes: Uint8Array;
+      try {
+        // Try base58 first (Solana address)
+        const pk = new PublicKey(values.targetAddressHex);
+        targetBytes = padBytes(pk.toBytes(), 64);
+      } catch {
+        // Fall back to hex
+        targetBytes = padBytes(hexToBytes(values.targetAddressHex), 64);
+      }
 
       // Convert SOL → lamports as bigint (Req 1.4, Req 9.11 — no logging).
       const salaryLamports = BigInt(Math.round(Number(values.salarySol) * 1e9));
@@ -389,9 +402,9 @@ export function AddEmployeeDialog({
               name="targetAddressHex"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Target address (hex, up to 64 bytes)</FormLabel>
+                  <FormLabel>Target address (Solana base58 or hex)</FormLabel>
                   <FormControl>
-                    <Input {...field} className="font-mono" placeholder="0x1234abcd…" />
+                    <Input {...field} className="font-mono" placeholder="Paste Solana address or hex bytes…" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
