@@ -126,13 +126,8 @@ export function DashboardNav() {
 
           {/* Logo */}
           <Link
-            href="/"
+            href="/?home=1"
             className="flex items-center gap-2 group"
-            onClick={() => {
-              // Signal to LandingHero that this is an intentional navigation
-              // so it skips the auto-redirect back to /dashboard.
-              try { sessionStorage.setItem("vaultic_nav_home", "1"); } catch {}
-            }}
           >
             <NavLogo />
             <span

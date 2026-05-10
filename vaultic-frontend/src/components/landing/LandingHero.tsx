@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
+
 import { WalletButton } from "@/components/wallet/WalletButton";
 import { InitializeTreasuryDialog } from "@/components/treasury/InitializeTreasuryDialog";
 import { useRole } from "@/hooks/useRole";
@@ -132,23 +133,19 @@ function VaulticLogo({ className = "" }: { className?: string }) {
 /* ── Main component ───────────────────────────────────────────────────── */
 export function LandingHero() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: role } = useRole();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    // If the user explicitly navigated home from the nav, skip the
-    // auto-redirect and clear the flag so normal behaviour resumes on
-    // the next visit.
-    try {
-      if (sessionStorage.getItem("vaultic_nav_home") === "1") {
-        sessionStorage.removeItem("vaultic_nav_home");
-        return;
-      }
-    } catch {}
+  // `?home=1` means the user explicitly clicked the nav logo — skip the
+  // auto-redirect so the homepage stays visible.
+  const intentionalHome = searchParams.get("home") === "1";
 
+  useEffect(() => {
+    if (intentionalHome) return;
     if (role === "admin") router.replace("/dashboard");
     else if (role === "employee") router.replace("/portal");
-  }, [role, router]);
+  }, [role, router, intentionalHome]);
 
   /* Animated canvas grid */
   useEffect(() => {
