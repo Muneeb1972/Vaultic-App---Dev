@@ -125,7 +125,15 @@ export function DashboardNav() {
           </Sheet>
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
+          <Link
+            href="/"
+            className="flex items-center gap-2 group"
+            onClick={() => {
+              // Signal to LandingHero that this is an intentional navigation
+              // so it skips the auto-redirect back to /dashboard.
+              try { sessionStorage.setItem("vaultic_nav_home", "1"); } catch {}
+            }}
+          >
             <NavLogo />
             <span
               className="hidden text-sm font-bold uppercase tracking-widest md:block"

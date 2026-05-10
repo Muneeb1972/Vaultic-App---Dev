@@ -136,6 +136,16 @@ export function LandingHero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    // If the user explicitly navigated home from the nav, skip the
+    // auto-redirect and clear the flag so normal behaviour resumes on
+    // the next visit.
+    try {
+      if (sessionStorage.getItem("vaultic_nav_home") === "1") {
+        sessionStorage.removeItem("vaultic_nav_home");
+        return;
+      }
+    } catch {}
+
     if (role === "admin") router.replace("/dashboard");
     else if (role === "employee") router.replace("/portal");
   }, [role, router]);
