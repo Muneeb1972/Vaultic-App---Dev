@@ -45,7 +45,6 @@ use anchor_lang::prelude::*;
 use crate::encrypt::is_committed;
 use crate::errors::VaulticError;
 use crate::events::{FHEComputationRequested, PayrollExecutionCompleted, PayrollExecutionStarted};
-use crate::fhe;
 use crate::state::{
     EmployeeRecord, PayrollConfig, PayrollExecution, PayrollStatus, TreasuryConfig,
 };
@@ -493,45 +492,26 @@ pub fn execute_payroll_computation(
         VaulticError::PayrollIntervalNotElapsed
     );
 
-    // CPI to the Encrypt program (design §3.1.1.7). Build the
-    // `EncryptContext` struct literal from our accounts; `to_account_info`
-    // values are bound to `let`s so the `&` references in the struct don't
-    // point at temporaries.
+    // DEVNET WORKAROUND: The Encrypt pre-alpha devnet program's
+    // `event_authority` PDA has never been initialized by the upstream team,
+    // so every CPI into Encrypt fails with Custom:2006 (FHEExecutionFailed).
+    // Skip the `compute_total_payout` CPI unconditionally and record
+    // `ct_total_out` directly. The Encrypt executor would normally write the
+    // computation result to this account; on devnet we treat it as a
+    // placeholder pubkey. Remove this block once the upstream team
+    // initializes the Encrypt event_authority PDA.
     //
-    // `compute_total_payout(salary, bonus, vested) -> EUint64` — the DSL
-    // macro compiles one AccountInfo per encrypted input plus one per
-    // encrypted output. We use `ct_bonus` as the `bonus` slot and
-    // `ct_performance` as the current proxy for the `vested` slot pending
-    // the dedicated vested-amount wiring in Task 11.3.
-    let encrypt_program = ctx.accounts.encrypt_program.to_account_info();
-    let config = ctx.accounts.config.to_account_info();
-    let deposit = ctx.accounts.deposit.to_account_info();
-    let cpi_authority = ctx.accounts.cpi_authority.to_account_info();
-    let caller_program = ctx.accounts.caller_program.to_account_info();
-    let network_encryption_key = ctx.accounts.network_encryption_key.to_account_info();
-    let payer = ctx.accounts.payer.to_account_info();
-    let event_authority = ctx.accounts.event_authority.to_account_info();
-    let system_program = ctx.accounts.system_program.to_account_info();
-    let encrypt_ctx = crate::encrypt::EncryptContext {
-        encrypt_program: &encrypt_program,
-        config: &config,
-        deposit: &deposit,
-        cpi_authority: &cpi_authority,
-        caller_program: &caller_program,
-        network_encryption_key: &network_encryption_key,
-        payer: &payer,
-        event_authority: &event_authority,
-        system_program: &system_program,
+    // Suppressed: unused variable warnings for the Encrypt CPI accounts.
+    let _ = (
+        ctx.accounts.encrypt_program.key(),
+        ctx.accounts.config.key(),
+        ctx.accounts.deposit.key(),
+        ctx.accounts.cpi_authority.key(),
+        ctx.accounts.caller_program.key(),
+        ctx.accounts.network_encryption_key.key(),
+        ctx.accounts.event_authority.key(),
         cpi_authority_bump,
-    };
-    fhe::compute_total_payout_cpi(
-        &encrypt_ctx,
-        ctx.accounts.ct_salary.to_account_info(),
-        ctx.accounts.ct_bonus.to_account_info(),
-        ctx.accounts.ct_performance.to_account_info(),
-        ctx.accounts.ct_total_out.to_account_info(),
-    )
-    .map_err(|_| VaulticError::FHEExecutionFailed)?;
+    );
 
     // Req 4.3 — open the PayrollExecution in `Processing`. `set_inner`
     // keeps the assignment atomic and documents the full field set in one
@@ -712,42 +692,21 @@ pub fn compute_bonus(
         VaulticError::EmployeeInactive
     );
 
-    // `compute_bonus_amount(base, perf, threshold, bonus_multiplier_bps: PUint64)`
-    // folds the PUint64 multiplier into the graph at compile time — it is
-    // not passed through the CPI. The `_bonus_multiplier_bps: u64`
-    // parameter is accepted for forward compatibility with a future graph
-    // shape and for audit/ledger purposes; the value actually used by the
-    // FHE computation is the one baked into `PayrollConfig.bonus_multiplier_bps`
-    // and picked up by the graph builder at `#[encrypt_fn]` expansion time.
-    let encrypt_program = ctx.accounts.encrypt_program.to_account_info();
-    let config = ctx.accounts.config.to_account_info();
-    let deposit = ctx.accounts.deposit.to_account_info();
-    let cpi_authority = ctx.accounts.cpi_authority.to_account_info();
-    let caller_program = ctx.accounts.caller_program.to_account_info();
-    let network_encryption_key = ctx.accounts.network_encryption_key.to_account_info();
-    let payer = ctx.accounts.payer.to_account_info();
-    let event_authority = ctx.accounts.event_authority.to_account_info();
-    let system_program = ctx.accounts.system_program.to_account_info();
-    let encrypt_ctx = crate::encrypt::EncryptContext {
-        encrypt_program: &encrypt_program,
-        config: &config,
-        deposit: &deposit,
-        cpi_authority: &cpi_authority,
-        caller_program: &caller_program,
-        network_encryption_key: &network_encryption_key,
-        payer: &payer,
-        event_authority: &event_authority,
-        system_program: &system_program,
+    // DEVNET WORKAROUND: Same Encrypt event_authority blocker as
+    // `execute_payroll_computation`. Skip the `compute_bonus_amount` CPI
+    // and record `ct_output_bonus` directly as the bonus ciphertext pubkey.
+    // Remove once the upstream team initializes the Encrypt event_authority PDA.
+    let _ = (
+        ctx.accounts.encrypt_program.key(),
+        ctx.accounts.config.key(),
+        ctx.accounts.deposit.key(),
+        ctx.accounts.cpi_authority.key(),
+        ctx.accounts.caller_program.key(),
+        ctx.accounts.network_encryption_key.key(),
+        ctx.accounts.event_authority.key(),
         cpi_authority_bump,
-    };
-    fhe::compute_bonus_amount_cpi(
-        &encrypt_ctx,
-        ctx.accounts.ct_base_salary.to_account_info(),
-        ctx.accounts.ct_perf.to_account_info(),
-        ctx.accounts.ct_threshold.to_account_info(),
-        ctx.accounts.ct_output_bonus.to_account_info(),
-    )
-    .map_err(|_| VaulticError::FHEExecutionFailed)?;
+        _bonus_multiplier_bps,
+    );
 
     // Req 27.4 — persist the ciphertext pubkey so downstream payroll/decryption
     // instructions can reference the fresh bonus value.
