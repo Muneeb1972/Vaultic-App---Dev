@@ -1,7 +1,9 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 
 import { WalletButton } from "@/components/wallet/WalletButton";
 import { InitializeTreasuryDialog } from "@/components/treasury/InitializeTreasuryDialog";
@@ -133,19 +135,11 @@ function VaulticLogo({ className = "" }: { className?: string }) {
 /* ── Main component ───────────────────────────────────────────────────── */
 export function LandingHero() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { data: role } = useRole();
+  const { connected } = useWallet();
+  const { data: role, isLoading: roleLoading } = useRole();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // `?home=1` means the user explicitly clicked the nav logo — skip the
-  // auto-redirect so the homepage stays visible.
-  const intentionalHome = searchParams.get("home") === "1";
-
-  useEffect(() => {
-    if (intentionalHome) return;
-    if (role === "admin") router.replace("/dashboard");
-    else if (role === "employee") router.replace("/portal");
-  }, [role, router, intentionalHome]);
+  // No auto-redirect — user must click "Proceed" after connecting.
 
   /* Animated canvas grid */
   useEffect(() => {
@@ -371,20 +365,52 @@ export function LandingHero() {
           className="animate-fade-up delay-400 mt-10 flex flex-col items-center gap-4"
           style={{ opacity: 0 }}
         >
-          <div className="relative group">
-            {/* Glow behind button */}
-            <div
-              className="absolute -inset-1 rounded-xl opacity-60 blur-lg transition-opacity duration-300 group-hover:opacity-100"
-              style={{
-                background: "linear-gradient(135deg, #6366f1, #4f46e5, #3b82f6)",
-              }}
-            />
-            <div className="relative">
-              <WalletButton />
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {/* Wallet button with glow */}
+            <div className="relative group">
+              <div
+                className="absolute -inset-1 rounded-xl opacity-60 blur-lg transition-opacity duration-300 group-hover:opacity-100"
+                style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5, #3b82f6)" }}
+              />
+              <div className="relative">
+                <WalletButton />
+              </div>
             </div>
+
+            {/* Proceed button — only shown when wallet is connected */}
+            {connected && (
+              <button
+                onClick={() => {
+                  if (role === "admin") router.push("/dashboard");
+                  else if (role === "employee") router.push("/portal");
+                  else router.push("/dashboard");
+                }}
+                disabled={roleLoading}
+                className="group relative flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #3b82f6 100%)",
+                  boxShadow: "0 0 20px rgba(99,102,241,0.4)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 32px rgba(99,102,241,0.65)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 20px rgba(99,102,241,0.4)";
+                }}
+              >
+                {roleLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    Proceed
+                    <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
-          {role === "unknown" && (
+          {role === "unknown" && connected && (
             <div className="flex flex-col items-center gap-2">
               <p className="text-sm" style={{ color: "rgba(165,180,252,0.6)" }}>
                 Wallet connected — no treasury found yet.
