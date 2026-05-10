@@ -32,6 +32,7 @@
  */
 import { BN } from "@coral-xyz/anchor";
 import { PublicKey, Keypair } from "@solana/web3.js";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -44,22 +45,10 @@ import {
   findEncryptCpiAuthority,
   findPayrollExecPda,
 } from "@/lib/pda";
+import { buildEncryptCpiAccounts } from "@/lib/encrypt/cpiAccounts";
 import type { EmployeeEntry } from "@/hooks/useEmployees";
 import type { PayrollConfigAccount } from "@/hooks/usePayrollConfig";
 import type { TreasuryAccount } from "@/hooks/useTreasury";
-
-/** Safely parse a base58 pubkey from an env var; fall back to `default`. */
-function envPubkey(
-  value: string | undefined,
-  fallback: PublicKey = PublicKey.default,
-): PublicKey {
-  if (!value) return fallback;
-  try {
-    return new PublicKey(value);
-  } catch {
-    return fallback;
-  }
-}
 
 /**
  * Convert an IDL-decoded `[u8; 32]` array back into a `PublicKey`. Anchor
@@ -83,6 +72,8 @@ export function ExecutePayrollButton({
   employees,
 }: ExecutePayrollButtonProps) {
   const program = useVaulticProgram();
+  const { connection } = useConnection();
+  const wallet = useWallet();
   const queryClient = useQueryClient();
 
   // Re-render every second so the countdown label updates smoothly.
@@ -124,8 +115,7 @@ export function ExecutePayrollButton({
       );
       const [, cpiAuthorityBump] = findEncryptCpiAuthority(program.programId);
 
-      // Generate the output ciphertext account. The Encrypt CPI inits this
-      // as the computation destination.
+      // Generate the output ciphertext account.
       const ctTotalOut = Keypair.generate();
 
       const employee = activeEmployee;
@@ -146,23 +136,9 @@ export function ExecutePayrollButton({
         payrollConfig.bandMax[0] as unknown as number[],
       );
 
-      // Env-resolved Encrypt program accounts. Missing env → default
-      // pubkey; the on-chain program rejects this with a CPI error.
-      const encryptProgram = envPubkey(
-        process.env.NEXT_PUBLIC_ENCRYPT_PROGRAM_ID,
-      );
-      const encryptConfig = envPubkey(
-        process.env.NEXT_PUBLIC_ENCRYPT_CONFIG,
-      );
-      const encryptDeposit = envPubkey(
-        process.env.NEXT_PUBLIC_ENCRYPT_DEPOSIT,
-      );
-      const networkEncryptionKey = envPubkey(
-        process.env.NEXT_PUBLIC_ENCRYPT_NETWORK_KEY,
-      );
-      const eventAuthority = envPubkey(
-        process.env.NEXT_PUBLIC_ENCRYPT_EVENT_AUTHORITY,
-      );
+      // Derive Encrypt CPI accounts properly instead of using env vars.
+      if (!wallet.publicKey) throw new Error("Wallet not connected");
+      const enc = await buildEncryptCpiAccounts(connection, wallet.publicKey);
 
       return program.methods
         .executePayrollComputation(executionId, cpiAuthorityBump)
@@ -170,12 +146,12 @@ export function ExecutePayrollButton({
           treasury: treasuryPda,
           employee: employee.publicKey,
           payrollExecution: payrollExecPda,
-          encryptProgram,
-          config: encryptConfig,
-          deposit: encryptDeposit,
-          callerProgram: program.programId,
-          networkEncryptionKey,
-          eventAuthority,
+          encryptProgram: enc.encryptProgram,
+          config: enc.configPda,
+          deposit: enc.depositPda,
+          callerProgram: enc.callerProgram,
+          networkEncryptionKey: enc.networkKeyPda,
+          eventAuthority: enc.eventAuthority,
           ctSalary,
           ctBonus,
           ctPerformance,
