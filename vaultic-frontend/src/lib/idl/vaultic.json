@@ -68,24 +68,14 @@
           }
         },
         {
-          "name": "ika_program"
-        },
-        {
-          "name": "coordinator",
-          "writable": true
-        },
-        {
           "name": "message_approval",
+          "docs": [
+            "under the Ika program. Writable so Ika can initialise it."
+          ],
           "writable": true
         },
         {
           "name": "dwallet"
-        },
-        {
-          "name": "caller_program",
-          "docs": [
-            "and Ika — see `caller_program_enc` below, which reuses this)."
-          ]
         },
         {
           "name": "ika_cpi_authority",
@@ -170,6 +160,9 @@
               }
             ]
           }
+        },
+        {
+          "name": "caller_program"
         },
         {
           "name": "network_encryption_key"
@@ -727,6 +720,50 @@
       ]
     },
     {
+      "name": "finalize_claim",
+      "discriminator": [
+        86,
+        162,
+        202,
+        241,
+        136,
+        125,
+        52,
+        149
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "treasury"
+          ]
+        },
+        {
+          "name": "treasury",
+          "relations": [
+            "employee_record",
+            "claim_record"
+          ]
+        },
+        {
+          "name": "employee_record",
+          "writable": true
+        },
+        {
+          "name": "claim_record",
+          "writable": true
+        },
+        {
+          "name": "message_approval",
+          "docs": [
+            "We read its raw bytes to check status and extract the signature."
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "finalize_payroll",
       "discriminator": [
         48,
@@ -942,21 +979,14 @@
           "writable": true
         },
         {
-          "name": "ika_program"
-        },
-        {
-          "name": "coordinator",
-          "writable": true
-        },
-        {
           "name": "message_approval",
+          "docs": [
+            "under the Ika program. Writable so Ika can initialise it."
+          ],
           "writable": true
         },
         {
           "name": "dwallet"
-        },
-        {
-          "name": "caller_program"
         },
         {
           "name": "ika_cpi_authority",
@@ -991,6 +1021,9 @@
         },
         {
           "name": "payer",
+          "docs": [
+            "Pays rent for the MessageApproval account."
+          ],
           "writable": true,
           "signer": true
         },
@@ -1000,6 +1033,10 @@
         }
       ],
       "args": [
+        {
+          "name": "message_approval_bump",
+          "type": "u8"
+        },
         {
           "name": "cpi_authority_bump",
           "type": "u8"
@@ -2472,21 +2509,26 @@
     },
     {
       "code": 6015,
+      "name": "IkaSigningPending",
+      "msg": "Ika signature is still pending — retry after MPC round completes"
+    },
+    {
+      "code": 6016,
       "name": "InvalidApproverCount",
       "msg": "Invalid approver count"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "NameTooLong",
       "msg": "Name exceeds maximum length"
     },
     {
-      "code": 6017,
+      "code": 6018,
       "name": "InvalidPayrollState",
       "msg": "Payroll execution is not in a finalizable state"
     },
     {
-      "code": 6018,
+      "code": 6019,
       "name": "CtAccountCreationFailed",
       "msg": "Encrypted ciphertext account creation failed"
     }
