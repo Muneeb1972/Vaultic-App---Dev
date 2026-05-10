@@ -140,6 +140,38 @@ export function ExecutePayrollButton({
       if (!wallet.publicKey) throw new Error("Wallet not connected");
       const enc = await buildEncryptCpiAccounts(connection, wallet.publicKey);
 
+      // Simulation pre-check: capture on-chain logs before sending.
+      const tx = await program.methods
+        .executePayrollComputation(executionId, cpiAuthorityBump)
+        .accountsPartial({
+          treasury: treasuryPda,
+          employee: employee.publicKey,
+          payrollExecution: payrollExecPda,
+          encryptProgram: enc.encryptProgram,
+          config: enc.configPda,
+          deposit: enc.depositPda,
+          callerProgram: enc.callerProgram,
+          networkEncryptionKey: enc.networkKeyPda,
+          eventAuthority: enc.eventAuthority,
+          ctSalary,
+          ctBonus,
+          ctPerformance,
+          ctBandMin,
+          ctBandMax,
+          ctTotalOut: ctTotalOut.publicKey,
+        })
+        .transaction();
+
+      tx.feePayer = wallet.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      const sim = await connection.simulateTransaction(tx);
+      if (sim.value.err) {
+        const logs = sim.value.logs?.join("\n") ?? "no logs";
+        throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}\n\nLogs:\n${logs.slice(0, 600)}`);
+      }
+
       return program.methods
         .executePayrollComputation(executionId, cpiAuthorityBump)
         .accountsPartial({
@@ -159,7 +191,7 @@ export function ExecutePayrollButton({
           ctBandMax,
           ctTotalOut: ctTotalOut.publicKey,
         })
-        .rpc(); // ctTotalOut is not a signer — Encrypt CPI is skipped on devnet
+        .rpc();
     },
     onSuccess: (signature) => {
       toast.success("Payroll execution started", {
@@ -180,8 +212,9 @@ export function ExecutePayrollButton({
       queryClient.invalidateQueries({ queryKey: ["treasury"] });
     },
     onError: (err) => {
+      const msg = err instanceof Error ? err.message : humanizeError(err);
       toast.error("Payroll execution failed", {
-        description: humanizeError(err),
+        description: msg.slice(0, 400),
       });
     },
   });
