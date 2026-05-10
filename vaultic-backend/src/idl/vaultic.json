@@ -1144,6 +1144,87 @@
           }
         },
         {
+          "name": "ct_salary",
+          "docs": [
+            "Initialized by the Encrypt program via CPI; must be a signer so",
+            "Encrypt can create the account under this pubkey."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_bonus",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_performance",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "encrypt_program"
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "deposit",
+          "writable": true
+        },
+        {
+          "name": "cpi_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  110,
+                  99,
+                  114,
+                  121,
+                  112,
+                  116,
+                  95,
+                  99,
+                  112,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "caller_program"
+        },
+        {
+          "name": "network_encryption_key"
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for the Encrypt CPI rent (may differ from `authority`)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event_authority"
+        },
+        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -1158,16 +1239,16 @@
           "type": "u8"
         },
         {
-          "name": "encrypted_salary",
-          "type": "pubkey"
+          "name": "salary_plaintext",
+          "type": "u64"
         },
         {
-          "name": "encrypted_bonus",
-          "type": "pubkey"
+          "name": "bonus_plaintext",
+          "type": "u64"
         },
         {
-          "name": "encrypted_performance",
-          "type": "pubkey"
+          "name": "performance_plaintext",
+          "type": "u64"
         },
         {
           "name": "vesting_start",
@@ -1197,6 +1278,10 @@
               64
             ]
           }
+        },
+        {
+          "name": "cpi_authority_bump",
+          "type": "u8"
         }
       ]
     },
@@ -1382,16 +1467,16 @@
       "args": []
     },
     {
-      "name": "set_payroll_config",
+      "name": "set_payroll_band_maxs",
       "discriminator": [
-        190,
-        107,
-        176,
-        32,
-        114,
-        155,
-        156,
-        30
+        186,
+        83,
+        132,
+        77,
+        245,
+        4,
+        4,
+        253
       ],
       "accounts": [
         {
@@ -1403,11 +1488,7 @@
           ]
         },
         {
-          "name": "treasury",
-          "docs": [
-            "Treasury whose payroll this config belongs to. `has_one = authority`",
-            "enforces Req 3.4 `Unauthorized` on caller mismatch."
-          ]
+          "name": "treasury"
         },
         {
           "name": "payroll_config",
@@ -1441,36 +1522,406 @@
           }
         },
         {
+          "name": "ct_band_max_0",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_max_1",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_max_2",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_max_3",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_max_4",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "encrypt_program"
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "deposit",
+          "writable": true
+        },
+        {
+          "name": "cpi_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  110,
+                  99,
+                  114,
+                  121,
+                  112,
+                  116,
+                  95,
+                  99,
+                  112,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "caller_program"
+        },
+        {
+          "name": "network_encryption_key"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event_authority"
+        },
+        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "band_min",
+          "name": "band_max_plaintexts",
           "type": {
             "array": [
-              "pubkey",
+              "u64",
               5
             ]
           }
         },
         {
-          "name": "band_max",
+          "name": "cpi_authority_bump",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "set_payroll_band_mins",
+      "discriminator": [
+        131,
+        150,
+        111,
+        243,
+        89,
+        87,
+        185,
+        13
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "treasury"
+          ]
+        },
+        {
+          "name": "treasury"
+        },
+        {
+          "name": "payroll_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  121,
+                  114,
+                  111,
+                  108,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "treasury"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ct_band_min_0",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_min_1",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_min_2",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_min_3",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "ct_band_min_4",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "encrypt_program"
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "deposit",
+          "writable": true
+        },
+        {
+          "name": "cpi_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  110,
+                  99,
+                  114,
+                  121,
+                  112,
+                  116,
+                  95,
+                  99,
+                  112,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "caller_program"
+        },
+        {
+          "name": "network_encryption_key"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "band_min_plaintexts",
           "type": {
             "array": [
-              "pubkey",
+              "u64",
               5
             ]
           }
         },
         {
-          "name": "performance_threshold",
-          "type": "pubkey"
+          "name": "cpi_authority_bump",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "set_payroll_threshold",
+      "discriminator": [
+        106,
+        1,
+        226,
+        188,
+        2,
+        59,
+        165,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "treasury"
+          ]
+        },
+        {
+          "name": "treasury"
+        },
+        {
+          "name": "payroll_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  121,
+                  114,
+                  111,
+                  108,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "treasury"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ct_perf_threshold",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "encrypt_program"
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "deposit",
+          "writable": true
+        },
+        {
+          "name": "cpi_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  110,
+                  99,
+                  114,
+                  121,
+                  112,
+                  116,
+                  95,
+                  99,
+                  112,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "caller_program"
+        },
+        {
+          "name": "network_encryption_key"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "performance_threshold_plaintext",
+          "type": "u64"
         },
         {
           "name": "bonus_multiplier_bps",
           "type": "u16"
+        },
+        {
+          "name": "cpi_authority_bump",
+          "type": "u8"
         }
       ]
     },
@@ -2033,6 +2484,11 @@
       "code": 6017,
       "name": "InvalidPayrollState",
       "msg": "Payroll execution is not in a finalizable state"
+    },
+    {
+      "code": 6018,
+      "name": "CtAccountCreationFailed",
+      "msg": "Encrypted ciphertext account creation failed"
     }
   ],
   "types": [
