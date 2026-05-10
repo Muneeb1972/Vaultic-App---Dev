@@ -1,0 +1,408 @@
+# Vaultic Treasury OS — CI pipeline (design §10.3)
+#
+# Strict build order per Req 26 + 31.8:
+#   contracts-lint
+#     → contracts-test        (cargo test + tarpaulin >= 80%)
+#       → contracts-deploy    (devnet, manual — needs SOLANA_KEYPAIR secret + funded SOL)
+#         → sync-ids          (propagates Program ID to backend/frontend .env files)
+#           → backend-lint
+#             → backend-test  (jest --coverage, lines >= 80%)
+#               → backend-build
+#                 → frontend-lint
+#                   → frontend-test
+#                     → frontend-build
+#                       → deploy (production — out of scope for pre-alpha)
+#
+# On push / PR, contracts-deploy and sync-ids are skipped (they require
+# devnet credentials). The frontend/backend jobs fall back to the
+# program id already committed in the repo under
+# `vaultic-contracts/.env.deployed` and the vendored IDL in
+# `vaultic-backend/src/idl/`. For real devnet cutovers, trigger the
+# workflow via `workflow_dispatch` with the `deploy_contracts` input set
+# to `true`.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_contracts:
+        description: "Run contracts-deploy + sync-ids (requires SOLANA_KEYPAIR secret)"
+        required: false
+        default: "false"
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9.15.9"
+  RUST_TOOLCHAIN: "1.79.0"
+  SOLANA_VERSION: "1.18.26"
+  ANCHOR_VERSION: "0.32.1"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. contracts-lint — cargo fmt + clippy
+  # ---------------------------------------------------------------------------
+  contracts-lint:
+    name: contracts-lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vaultic-contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vaultic-contracts/target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('vaultic-contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lint-
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ---------------------------------------------------------------------------
+  # 2. contracts-test — cargo test + tarpaulin (>= 80% host-testable coverage)
+  # ---------------------------------------------------------------------------
+  contracts-test:
+    name: contracts-test
+    runs-on: ubuntu-latest
+    needs: [contracts-lint]
+    defaults:
+      run:
+        working-directory: vaultic-contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vaultic-contracts/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('vaultic-contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+
+      - name: cargo test --workspace
+        run: cargo test --workspace
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --locked --version ^0.31
+
+      - name: cargo tarpaulin (>= 80% on host-testable surface)
+        # Scope and fail-under threshold are pinned in tarpaulin.toml
+        # (fail-under = 80). Excludes the on-chain `vaultic` BPF crate.
+        run: cargo tarpaulin --config tarpaulin.toml
+
+  # ---------------------------------------------------------------------------
+  # 3. contracts-deploy — devnet deploy + IDL init + .env.deployed
+  # ---------------------------------------------------------------------------
+  # Gated to the main branch and workflow_dispatch with deploy_contracts=true.
+  # Requires a SOLANA_KEYPAIR secret with >= 3.5 SOL on devnet.
+  # TODO(mainnet): replace with a production-signing workflow once the
+  # pre-alpha devnet phase ends.
+  contracts-deploy:
+    name: contracts-deploy
+    runs-on: ubuntu-latest
+    needs: [contracts-test]
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.deploy_contracts == 'true' &&
+      github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: vaultic-contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${ANCHOR_VERSION} anchor-cli --locked
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore wallet keypair
+        env:
+          SOLANA_KEYPAIR: ${{ secrets.SOLANA_KEYPAIR }}
+        run: |
+          mkdir -p "$HOME/.config/solana"
+          printf '%s' "$SOLANA_KEYPAIR" > "$HOME/.config/solana/id.json"
+          chmod 600 "$HOME/.config/solana/id.json"
+          solana config set --url https://api.devnet.solana.com
+
+      - name: anchor build
+        run: anchor build
+
+      - name: Deploy to devnet
+        run: bash scripts/deploy-devnet.sh
+
+      - name: Upload .env.deployed
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-deployed
+          path: vaultic-contracts/.env.deployed
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 4. sync-ids — propagate Program ID into backend/frontend env files
+  # ---------------------------------------------------------------------------
+  sync-ids:
+    name: sync-ids
+    runs-on: ubuntu-latest
+    needs: [contracts-deploy]
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.deploy_contracts == 'true' &&
+      github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download .env.deployed
+        uses: actions/download-artifact@v4
+        with:
+          name: env-deployed
+          path: vaultic-contracts
+
+      - name: Run sync-ids.sh
+        run: bash vaultic-contracts/scripts/sync-ids.sh
+
+      - name: Upload synced env files
+        uses: actions/upload-artifact@v4
+        with:
+          name: synced-env
+          path: |
+            vaultic-backend/.env.production
+            vaultic-frontend/.env.production.local
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 5. backend-lint — pnpm lint + typecheck
+  # ---------------------------------------------------------------------------
+  # Depends on contracts-test; sync-ids is a no-op on PR builds (the
+  # vendored IDL and committed `.env.deployed` are already in the repo).
+  backend-lint:
+    name: backend-lint
+    runs-on: ubuntu-latest
+    needs: [contracts-test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm --filter vaultic-backend lint
+        run: pnpm --filter vaultic-backend lint
+
+      - name: pnpm --filter vaultic-backend typecheck
+        run: pnpm --filter vaultic-backend typecheck
+
+  # ---------------------------------------------------------------------------
+  # 6. backend-test — jest --coverage (threshold enforced by jest.config.ts)
+  # ---------------------------------------------------------------------------
+  backend-test:
+    name: backend-test
+    runs-on: ubuntu-latest
+    needs: [backend-lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm --filter vaultic-backend test
+        # Coverage is enforced by coverageThreshold.global.lines = 80 in
+        # vaultic-backend/jest.config.ts (fails non-zero on miss).
+        run: pnpm --filter vaultic-backend test
+
+  # ---------------------------------------------------------------------------
+  # 7. backend-build — tsc
+  # ---------------------------------------------------------------------------
+  backend-build:
+    name: backend-build
+    runs-on: ubuntu-latest
+    needs: [backend-test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm --filter vaultic-backend build
+        run: pnpm --filter vaultic-backend build
+
+  # ---------------------------------------------------------------------------
+  # 8. frontend-lint — next lint + tsc --noEmit
+  # ---------------------------------------------------------------------------
+  frontend-lint:
+    name: frontend-lint
+    runs-on: ubuntu-latest
+    needs: [backend-build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm --filter vaultic-frontend lint
+        run: pnpm --filter vaultic-frontend lint
+
+      - name: pnpm --filter vaultic-frontend typecheck
+        run: pnpm --filter vaultic-frontend typecheck
+
+  # ---------------------------------------------------------------------------
+  # 9. frontend-test — vitest + @testing-library/react (component tests)
+  # ---------------------------------------------------------------------------
+  frontend-test:
+    name: frontend-test
+    runs-on: ubuntu-latest
+    needs: [frontend-lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm --filter vaultic-frontend test
+        run: pnpm --filter vaultic-frontend test
+
+  # ---------------------------------------------------------------------------
+  # 10. frontend-build — next build
+  # ---------------------------------------------------------------------------
+  frontend-build:
+    name: frontend-build
+    runs-on: ubuntu-latest
+    needs: [frontend-test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm --filter vaultic-frontend build
+        run: pnpm --filter vaultic-frontend build
+
+  # ---------------------------------------------------------------------------
+  # 11. deploy — production deployment (placeholder)
+  # ---------------------------------------------------------------------------
+  # Out of scope for pre-alpha / devnet. Cutover target: mainnet + hosted
+  # backend/frontend (Vercel or equivalent). Keep as a no-op step with a
+  # TODO so the pipeline graph matches design §10.3 today and only the
+  # body needs to be filled in at cutover.
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    needs: [frontend-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Placeholder (no-op until mainnet cutover)
+        run: |
+          echo "Production deploy is out of scope for the pre-alpha devnet phase."
+          echo "TODO: wire Vercel / backend-host deploys once Alpha 1 lands."
