@@ -78,6 +78,16 @@ const createEmployee: RequestHandler = async (req, res, next) => {
         walletAddress: body.walletAddress,
         name: body.name,
         email: body.email ?? null,
+        salarySol: body.salarySol ?? null,
+        bonusSol: body.bonusSol ?? null,
+        performanceSol: body.performanceSol ?? null,
+        roleId: body.roleId ?? null,
+        chainPreference: body.chainPreference ?? null,
+        targetAddressHex: body.targetAddressHex ?? null,
+        totalAllocationSol: body.totalAllocationSol ?? null,
+        vestingStart: body.vestingStart ?? null,
+        vestingCliffDays: body.vestingCliffDays ?? null,
+        vestingDurationDays: body.vestingDurationDays ?? null,
       },
     });
 
@@ -122,6 +132,16 @@ const updateEmployee: RequestHandler = async (req, res, next) => {
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.email !== undefined ? { email: body.email || null } : {}),
+        ...(body.salarySol !== undefined ? { salarySol: body.salarySol } : {}),
+        ...(body.bonusSol !== undefined ? { bonusSol: body.bonusSol } : {}),
+        ...(body.performanceSol !== undefined ? { performanceSol: body.performanceSol } : {}),
+        ...(body.roleId !== undefined ? { roleId: body.roleId } : {}),
+        ...(body.chainPreference !== undefined ? { chainPreference: body.chainPreference } : {}),
+        ...(body.targetAddressHex !== undefined ? { targetAddressHex: body.targetAddressHex } : {}),
+        ...(body.totalAllocationSol !== undefined ? { totalAllocationSol: body.totalAllocationSol } : {}),
+        ...(body.vestingStart !== undefined ? { vestingStart: body.vestingStart } : {}),
+        ...(body.vestingCliffDays !== undefined ? { vestingCliffDays: body.vestingCliffDays } : {}),
+        ...(body.vestingDurationDays !== undefined ? { vestingDurationDays: body.vestingDurationDays } : {}),
       },
     });
 

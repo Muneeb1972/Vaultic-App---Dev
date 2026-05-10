@@ -38,6 +38,16 @@ export interface BackendEmployee {
   walletAddress: string;
   name: string;
   email?: string | null;
+  salarySol?: string | null;
+  bonusSol?: string | null;
+  performanceSol?: string | null;
+  roleId?: number | null;
+  chainPreference?: number | null;
+  targetAddressHex?: string | null;
+  totalAllocationSol?: string | null;
+  vestingStart?: string | null;
+  vestingCliffDays?: number | null;
+  vestingDurationDays?: number | null;
 }
 
 export interface EmployeesTableProps {
@@ -129,9 +139,7 @@ export function EmployeesTable({
                         {treasuryPda !== null && (
                           <EditEmployeeDialog
                             entry={entry}
-                            backendId={backend?.id}
-                            backendName={backend?.name}
-                            backendEmail={backend?.email ?? undefined}
+                            backend={backend}
                             treasuryPda={treasuryPda}
                           />
                         )}

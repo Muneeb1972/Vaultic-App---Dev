@@ -247,6 +247,17 @@ export function AddEmployeeDialog({
             walletAddress: employeeWalletKey.toBase58(),
             name: values.name,
             ...(values.email ? { email: values.email } : {}),
+            // Mirror plaintext compensation + vesting for Edit pre-fill.
+            salarySol: values.salarySol,
+            bonusSol: values.bonusSol,
+            performanceSol: values.performanceSol,
+            roleId: values.roleId,
+            chainPreference: values.chainPreference,
+            targetAddressHex: values.targetAddressHex,
+            totalAllocationSol: String(values.totalAllocationSol),
+            vestingStart: values.vestingStart,
+            vestingCliffDays: values.vestingCliffDays,
+            vestingDurationDays: values.vestingDurationDays,
           });
         } catch (backendErr) {
           toast.warning("On-chain succeeded but backend insert failed", {

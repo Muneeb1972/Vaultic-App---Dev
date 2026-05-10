@@ -17,10 +17,19 @@ const base58Pubkey = z
     'must be a base58-encoded Solana public key (32–44 chars)',
   );
 
+/** Non-negative decimal string representing a SOL amount. */
+const solAmountString = z
+  .string()
+  .regex(/^\d+(\.\d+)?$/, 'must be a non-negative decimal number');
+
 /**
  * `POST /api/employees` body. `email` is optional — not every DAO
  * collects employee email addresses (Req 25.2), and the frontend treats
  * a missing value as "no notifications".
+ *
+ * Compensation and vesting fields are optional — they are stored as a
+ * convenience mirror so the Edit dialog can pre-fill them without
+ * requiring the admin to re-enter values that are encrypted on-chain.
  */
 export const EmployeeCreate = z
   .object({
@@ -34,6 +43,22 @@ export const EmployeeCreate = z
     name: z.string().min(1).max(128),
     /** Optional contact email for notifications. */
     email: z.string().email().optional(),
+
+    // ── Compensation mirror (optional, stored for Edit pre-fill) ──
+    salarySol: solAmountString.optional(),
+    bonusSol: solAmountString.optional(),
+    performanceSol: solAmountString.optional(),
+
+    // ── On-chain field mirrors (optional, stored for Edit pre-fill) ──
+    roleId: z.number().int().min(0).max(4).optional(),
+    chainPreference: z.number().int().min(0).max(2).optional(),
+    /** Target address as hex string or base58. */
+    targetAddressHex: z.string().optional(),
+    totalAllocationSol: solAmountString.optional(),
+    /** ISO date string YYYY-MM-DD. */
+    vestingStart: z.string().optional(),
+    vestingCliffDays: z.number().int().nonnegative().optional(),
+    vestingDurationDays: z.number().int().positive().optional(),
   })
   .strict();
 export type EmployeeCreate = z.infer<typeof EmployeeCreate>;
@@ -51,17 +76,40 @@ export const EmployeesListQuery = z
 export type EmployeesListQuery = z.infer<typeof EmployeesListQuery>;
 
 /**
- * `PATCH /api/employees/:id` body — only the off-chain display fields
- * (name, email) are mutable. On-chain compensation and vesting fields
- * are immutable once the `register_employee` transaction is confirmed.
+ * `PATCH /api/employees/:id` body — all fields are optional; at least
+ * one must be provided. Includes both off-chain display fields (name,
+ * email) and the plaintext compensation/vesting mirrors.
  */
 export const EmployeeUpdate = z
   .object({
     name: z.string().min(1).max(128).optional(),
-    email: z.string().email().optional().or(z.literal("")),
+    email: z.string().email().optional().or(z.literal('')),
+    salarySol: solAmountString.optional(),
+    bonusSol: solAmountString.optional(),
+    performanceSol: solAmountString.optional(),
+    roleId: z.number().int().min(0).max(4).optional(),
+    chainPreference: z.number().int().min(0).max(2).optional(),
+    targetAddressHex: z.string().optional(),
+    totalAllocationSol: solAmountString.optional(),
+    vestingStart: z.string().optional(),
+    vestingCliffDays: z.number().int().nonnegative().optional(),
+    vestingDurationDays: z.number().int().positive().optional(),
   })
   .strict()
-  .refine((v) => v.name !== undefined || v.email !== undefined, {
-    message: 'At least one field (name or email) must be provided',
-  });
+  .refine(
+    (v) =>
+      v.name !== undefined ||
+      v.email !== undefined ||
+      v.salarySol !== undefined ||
+      v.bonusSol !== undefined ||
+      v.performanceSol !== undefined ||
+      v.roleId !== undefined ||
+      v.chainPreference !== undefined ||
+      v.targetAddressHex !== undefined ||
+      v.totalAllocationSol !== undefined ||
+      v.vestingStart !== undefined ||
+      v.vestingCliffDays !== undefined ||
+      v.vestingDurationDays !== undefined,
+    { message: 'At least one field must be provided' },
+  );
 export type EmployeeUpdate = z.infer<typeof EmployeeUpdate>;
