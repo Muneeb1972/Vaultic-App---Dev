@@ -95,7 +95,7 @@ export function TreasuryStats({ treasury, treasuryPda, isLoading }: TreasuryStat
             className="group relative overflow-hidden rounded-2xl p-5 transition-all duration-300 hover:-translate-y-0.5"
             style={{
               background: "rgba(10,10,20,0.7)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.18)",
               backdropFilter: "blur(16px)",
             }}
             onMouseEnter={(e) => {
@@ -119,7 +119,7 @@ export function TreasuryStats({ treasury, treasuryPda, isLoading }: TreasuryStat
 
             <div className="relative flex items-start justify-between">
               <div>
-                <p className="mb-3 text-xs font-medium uppercase tracking-widest" style={{ color: "rgba(148,163,184,0.7)" }}>
+                <p className="mb-3 text-xs font-medium uppercase tracking-widest" style={{ color: "rgba(203,213,225,0.85)" }}>
                   {meta.label}
                 </p>
                 <p

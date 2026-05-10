@@ -126,12 +126,12 @@ export default function DashboardHome() {
           className="rounded-2xl p-4"
           style={{
             background: "rgba(10,10,20,0.5)",
-            border: "1px solid rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.12)",
           }}
         >
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="h-4 w-4" style={{ color: "rgba(99,102,241,0.6)" }} />
-            <span className="text-xs font-medium uppercase tracking-widest" style={{ color: "rgba(100,116,139,0.7)" }}>
+            <span className="text-xs font-medium uppercase tracking-widest" style={{ color: "rgba(203,213,225,0.75)" }}>
               Quick Navigation
             </span>
           </div>
@@ -147,9 +147,9 @@ export default function DashboardHome() {
                 href={item.href}
                 className="group flex items-center justify-center rounded-xl px-3 py-2.5 text-xs font-medium transition-all duration-200"
                 style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  color: "rgba(148,163,184,0.8)",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  color: "rgba(203,213,225,0.85)",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLAnchorElement).style.background = `${item.color}12`;
@@ -157,9 +157,9 @@ export default function DashboardHome() {
                   (e.currentTarget as HTMLAnchorElement).style.color = item.color;
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.03)";
-                  (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(255,255,255,0.06)";
-                  (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)";
+                  (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.05)";
+                  (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(255,255,255,0.14)";
+                  (e.currentTarget as HTMLAnchorElement).style.color = "rgba(203,213,225,0.85)";
                 }}
               >
                 {item.label}

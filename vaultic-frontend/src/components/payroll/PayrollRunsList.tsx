@@ -47,14 +47,14 @@ export function PayrollRunsList({ runs, isLoading, limit = 10 }: PayrollRunsList
       className="overflow-hidden rounded-2xl"
       style={{
         background: "rgba(10,10,20,0.7)",
-        border: "1px solid rgba(255,255,255,0.06)",
+        border: "1px solid rgba(255,255,255,0.18)",
         backdropFilter: "blur(16px)",
       }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-5 py-4"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}
       >
         <div className="flex items-center gap-2.5">
           <div
@@ -95,10 +95,10 @@ export function PayrollRunsList({ runs, isLoading, limit = 10 }: PayrollRunsList
             >
               <Activity className="h-5 w-5" style={{ color: "rgba(99,102,241,0.5)" }} />
             </div>
-            <p className="text-sm font-medium" style={{ color: "rgba(148,163,184,0.6)" }}>
+            <p className="text-sm font-medium" style={{ color: "rgba(203,213,225,0.75)" }}>
               No payroll runs yet
             </p>
-            <p className="mt-1 text-xs" style={{ color: "rgba(100,116,139,0.6)" }}>
+            <p className="mt-1 text-xs" style={{ color: "rgba(148,163,184,0.65)" }}>
               Payroll executions will appear here
             </p>
           </div>
@@ -107,7 +107,7 @@ export function PayrollRunsList({ runs, isLoading, limit = 10 }: PayrollRunsList
             {/* Table header */}
             <div
               className="mb-1 grid grid-cols-4 px-3 py-2 text-xs font-medium uppercase tracking-widest"
-              style={{ color: "rgba(100,116,139,0.7)" }}
+              style={{ color: "rgba(203,213,225,0.7)" }}
             >
               <span>Status</span>
               <span>Execution ID</span>
@@ -137,7 +137,7 @@ export function PayrollRunsList({ runs, isLoading, limit = 10 }: PayrollRunsList
                     >
                       {run.account.executionId.toString()}
                     </div>
-                    <div className="text-xs" style={{ color: "rgba(148,163,184,0.7)" }}>
+                    <div className="text-xs" style={{ color: "rgba(203,213,225,0.8)" }}>
                       {formatUnixTimestamp(run.account.startedAt)}
                     </div>
                     <div

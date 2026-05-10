@@ -23,21 +23,21 @@ export function DWalletBadge({ treasury }: DWalletBadgeProps) {
       className="group relative overflow-hidden rounded-2xl p-5 transition-all duration-300 hover:-translate-y-0.5"
       style={{
         background: "rgba(10,10,20,0.7)",
-        border: `1px solid ${unset ? "rgba(239,68,68,0.15)" : "rgba(99,102,241,0.2)"}`,
+        border: `1px solid ${unset ? "rgba(239,68,68,0.35)" : "rgba(99,102,241,0.45)"}`,
         backdropFilter: "blur(16px)",
       }}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLDivElement).style.borderColor = unset
-          ? "rgba(239,68,68,0.35)"
-          : "rgba(99,102,241,0.4)";
+          ? "rgba(239,68,68,0.6)"
+          : "rgba(99,102,241,0.7)";
         (e.currentTarget as HTMLDivElement).style.boxShadow = unset
           ? "0 8px 32px rgba(239,68,68,0.08)"
           : "0 8px 32px rgba(99,102,241,0.12)";
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLDivElement).style.borderColor = unset
-          ? "rgba(239,68,68,0.15)"
-          : "rgba(99,102,241,0.2)";
+          ? "rgba(239,68,68,0.35)"
+          : "rgba(99,102,241,0.45)";
         (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
       }}
     >
@@ -94,7 +94,7 @@ export function DWalletBadge({ treasury }: DWalletBadgeProps) {
                 Not Bound
               </span>
             </div>
-            <p className="text-sm" style={{ color: "rgba(148,163,184,0.7)" }}>
+            <p className="text-sm" style={{ color: "rgba(203,213,225,0.85)" }}>
               Run DKG ceremony to bind an Ika dWallet to this treasury.
             </p>
           </div>
@@ -129,7 +129,7 @@ export function DWalletBadge({ treasury }: DWalletBadgeProps) {
             </p>
             <div className="flex items-center gap-2">
               <Cpu className="h-3.5 w-3.5" style={{ color: "rgba(148,163,184,0.5)" }} />
-              <p className="text-xs" style={{ color: "rgba(148,163,184,0.6)" }}>
+              <p className="text-xs" style={{ color: "rgba(203,213,225,0.75)" }}>
                 Curve: {curveLabel(treasury.dwalletCurveType)}
               </p>
             </div>
