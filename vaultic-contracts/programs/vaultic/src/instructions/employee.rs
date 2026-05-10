@@ -26,7 +26,7 @@ use crate::state::{EmployeeRecord, TreasuryConfig};
 /// `remaining_accounts` so the Anchor IDL documents them to frontend
 /// consumers (design §3.1.1).
 #[derive(Accounts)]
-#[instruction(employee_wallet: Pubkey, cpi_authority_bump: u8)]
+#[instruction(employee_wallet: Pubkey)]
 pub struct RegisterEmployee<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -70,7 +70,7 @@ pub struct RegisterEmployee<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of THIS program.
     #[account(
         seeds = [ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: This program's own executable account (Encrypt uses it as `caller_program`).
