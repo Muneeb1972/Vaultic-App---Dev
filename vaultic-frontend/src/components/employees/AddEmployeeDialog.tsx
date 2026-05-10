@@ -210,6 +210,20 @@ export function AddEmployeeDialog({
         targetAddress: targetBytes,
       });
 
+      // Simulate first to surface the exact on-chain error logs.
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = wallet.publicKey;
+      // Partially sign with fresh keypairs so simulation can verify signers.
+      tx.partialSign(...freshKeypairs);
+      const simResult = await connection.simulateTransaction(tx, undefined, true);
+      if (simResult.value.err) {
+        const logs = simResult.value.logs?.join('\n') ?? 'no logs';
+        console.error('[Vaultic] simulate error:', simResult.value.err);
+        console.error('[Vaultic] simulate logs:\n', logs);
+        throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}\n\nLogs:\n${logs}`);
+      }
+
       // Step 3: Sign and send (Req 2.2 — fresh keypairs as additional signers).
       const signature = await wallet.sendTransaction!(tx, connection, {
         signers: freshKeypairs,
@@ -269,7 +283,9 @@ export function AddEmployeeDialog({
       const type = classifyError(err, encryptPhase);
       const msg = errorMessage(type, err);
       setEncryptPhase({ kind: 'Error', type, message: msg });
-      toast.error("Registration failed", { description: msg });
+      // Show full error including simulation logs for debugging
+      const fullMsg = err instanceof Error ? err.message : msg;
+      toast.error("Registration failed", { description: fullMsg.slice(0, 300) });
     },
   });
 
@@ -521,7 +537,7 @@ export function AddEmployeeDialog({
               </p>
             )}
             {encryptPhase.kind === 'Error' && (
-              <p className="text-sm text-destructive">{encryptPhase.message}</p>
+              <p className="text-sm text-destructive whitespace-pre-wrap break-all">{encryptPhase.message}</p>
             )}
 
             <DialogFooter>
