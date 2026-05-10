@@ -125,7 +125,7 @@ export function DashboardNav() {
           </Sheet>
 
           {/* Logo */}
-          <Link href="/dashboard" className="flex items-center gap-2 group">
+          <Link href="/" className="flex items-center gap-2 group">
             <NavLogo />
             <span
               className="hidden text-sm font-bold uppercase tracking-widest md:block"
