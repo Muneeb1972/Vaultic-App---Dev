@@ -183,8 +183,7 @@ export function ExecutePayrollButton({
           ctBandMax,
           ctTotalOut: ctTotalOut.publicKey,
         })
-        .signers([ctTotalOut])
-        .rpc();
+        .rpc(); // ctTotalOut is not a signer — Encrypt CPI is skipped on devnet
     },
     onSuccess: (signature) => {
       toast.success("Payroll execution started", {

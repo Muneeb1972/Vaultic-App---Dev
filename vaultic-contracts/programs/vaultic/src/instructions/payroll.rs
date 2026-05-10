@@ -395,7 +395,7 @@ pub fn set_payroll_threshold(
 /// Account ordering: domain accounts first, then the 10 Encrypt CPI
 /// context accounts, then the 6 ciphertext accounts (5 inputs + 1 output).
 #[derive(Accounts)]
-#[instruction(execution_id: u64, cpi_authority_bump: u8)]
+#[instruction(execution_id: u64)]
 pub struct ExecutePayroll<'info> {
     #[account(mut, has_one = authority @ VaulticError::Unauthorized)]
     pub treasury: Account<'info, TreasuryConfig>,
