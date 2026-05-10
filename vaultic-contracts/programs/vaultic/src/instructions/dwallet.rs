@@ -191,20 +191,13 @@ pub struct ApprovePayrollMessage<'info> {
     )]
     pub payroll_execution: Account<'info, PayrollExecution>,
 
-    // ── Ika CPI accounts (7) ──────────────────────────────────────────────
-    /// CHECK: Ika program id; validated by the Ika runtime.
-    pub ika_program: UncheckedAccount<'info>,
-    /// CHECK: Ika DWalletCoordinator PDA (writable).
-    #[account(mut)]
-    pub coordinator: UncheckedAccount<'info>,
-    /// CHECK: MessageApproval account the Ika CPI initialises (writable).
+    // ── Ika CPI accounts (5 — corrected from upstream docs) ─────────────
+    /// CHECK: MessageApproval PDA — seeds ["message_approval", dwallet, message_hash]
+    /// under the Ika program. Writable so Ika can initialise it.
     #[account(mut)]
     pub message_approval: UncheckedAccount<'info>,
     /// CHECK: dwallet account owned by the Ika program.
     pub dwallet: UncheckedAccount<'info>,
-    /// CHECK: this program's executable account (shared between Encrypt
-    /// and Ika — see `caller_program_enc` below, which reuses this).
-    pub caller_program: UncheckedAccount<'info>,
     /// CHECK: PDA `[IKA_CPI_AUTHORITY_SEED]` of THIS program; the Ika
     /// program treats this as the signer of the approval.
     #[account(
@@ -230,6 +223,8 @@ pub struct ApprovePayrollMessage<'info> {
         bump = cpi_authority_bump,
     )]
     pub encrypt_cpi_authority: UncheckedAccount<'info>,
+    /// CHECK: this program's own executable account (used by Encrypt as `caller_program`).
+    pub caller_program: UncheckedAccount<'info>,
     /// CHECK: Encrypt network encryption key.
     pub network_encryption_key: UncheckedAccount<'info>,
     /// CHECK: Encrypt event authority PDA.
@@ -371,19 +366,20 @@ pub fn approve_payroll_message(
     // we stash on `PayrollExecution` for later matching against the
     // produced signature.
     let stored_digest = ika::approve_message_cpi(
-        ctx.accounts.coordinator.to_account_info(),
         ctx.accounts.message_approval.to_account_info(),
         ctx.accounts.dwallet.to_account_info(),
-        ctx.accounts.caller_program.to_account_info(),
         ctx.accounts.ika_cpi_authority.to_account_info(),
         ctx.accounts.payer.to_account_info(),
         ctx.accounts.system_program.to_account_info(),
+        // message_approval_bump: derive from the PDA seeds
+        Pubkey::find_program_address(
+            &[b"message_approval", ctx.accounts.treasury.dwallet_id.as_ref(), &message_hash],
+            &ika::IKA_PROGRAM_ID,
+        ).1,
         ika_cpi_bump,
         &message,
-        [0u8; 32], // no metadata digest for payroll messages
         ctx.accounts.treasury.authority,
-        // signature_scheme discriminant mirrors dwallet_curve_type.
-        u16::from(ctx.accounts.treasury.dwallet_curve_type),
+        u16::from(ctx.accounts.treasury.dwallet_curve_type) as u8,
     )?;
     debug_assert_eq!(stored_digest, message_hash);
 

@@ -5,21 +5,45 @@
 //! therefore call Ika via raw CPI (`invoke_signed` with a manually serialized
 //! instruction buffer), which is framework-independent.
 //!
-//! `approve_message` (disc 8) payload layout per design §6.2:
+//! ## Corrected `approve_message` layout
+//!
+//! Source: https://solana-pre-alpha.ika.xyz/frameworks/typescript
+//!
+//! Instruction data (67 bytes):
 //! ```text
-//! offset size  field
-//!    0     1   discriminator = 0x08
-//!    1     1   cpi_authority_bump
-//!    2    32   message_digest         (keccak256 of message)
-//!   34    32   message_metadata_digest (zero if unused)
-//!   66    32   user_pubkey
-//!   98     2   signature_scheme (u16 LE)
-//! total: 100 bytes
+//! offset  size  field
+//!    0      1   discriminator = 0x08
+//!    1      1   message_approval_bump
+//!    2     32   message_hash  (keccak256 of message)
+//!   34     32   user_pubkey
+//!   66      1   signature_scheme  (0=Ed25519, 1=Secp256k1, etc.)
+//! total: 67 bytes
 //! ```
 //!
-//! CPI authority PDA seeds: `[b"__ika_cpi_authority"]` derived from OUR program ID.
+//! Accounts (5, in this exact order):
+//!   1. message_approval  (writable, PDA)
+//!   2. dwallet           (readonly)
+//!   3. authority         (readonly, signer — the CPI authority PDA)
+//!   4. payer             (writable, signer)
+//!   5. system_program    (readonly)
 //!
-//! Implementation: Task 6.1
+//! MessageApproval PDA seeds: `["message_approval", dwallet_pubkey, message_hash]`
+//! under the Ika program.
+//!
+//! ## `MessageApproval` account read layout
+//!
+//! Source: https://solana-pre-alpha.ika.xyz/frameworks/typescript
+//!
+//! ```text
+//! offset  size  field
+//!    0      2   disc + version prefix
+//!    2     32   dwallet pubkey
+//!   34     32   message_hash
+//!   66     32   approver pubkey
+//!  139      1   status  (0=Pending, 1=Signed)
+//!  140      2   signature_len (u16 LE)
+//!  142    var   signature bytes
+//! ```
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
@@ -33,54 +57,59 @@ use crate::errors::VaulticError;
 pub const IKA_PROGRAM_ID: Pubkey = pubkey!("87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY");
 pub const IKA_CPI_AUTHORITY_SEED: &[u8] = b"__ika_cpi_authority";
 
+/// Byte offset of the `status` field in a `MessageApproval` account.
+pub const MESSAGE_APPROVAL_STATUS_OFFSET: usize = 139;
+/// Byte offset of the `signature_len` u16 in a `MessageApproval` account.
+pub const MESSAGE_APPROVAL_SIG_LEN_OFFSET: usize = 140;
+/// Byte offset where signature bytes begin in a `MessageApproval` account.
+pub const MESSAGE_APPROVAL_SIG_OFFSET: usize = 142;
+/// Status value meaning the Ika network has produced a signature.
+pub const MESSAGE_APPROVAL_STATUS_SIGNED: u8 = 1;
+/// Maximum expected signature length (96 bytes for Secp256k1 + recovery byte).
+pub const MAX_SIGNATURE_LEN: usize = 96;
+
 /// Build and dispatch the Ika `approve_message` instruction via raw CPI.
 ///
-/// Serializes the 100-byte instruction data per design §6.2, then calls
-/// `invoke_signed` with the CPI authority PDA seeds so Ika sees our program
-/// as the signer of the approval. Returns the keccak256 digest of `message`
-/// so the caller can persist it for later matching against the produced
-/// signature (Req 7.2).
+/// Uses the corrected 67-byte instruction layout and 5-account list from
+/// the official Ika pre-alpha TypeScript docs.
 ///
-/// Accounts (must be passed in exactly this order — Ika enforces it):
-/// 1. coordinator      (writable)
-/// 2. message_approval (writable)
-/// 3. dwallet          (readonly)
-/// 4. caller_program   (readonly — this program's executable account)
-/// 5. cpi_authority    (readonly, signer via PDA)
-/// 6. payer            (writable, signer)
-/// 7. system_program   (readonly)
+/// Returns the keccak256 digest of `message` so the caller can persist it
+/// for later matching when reading the `MessageApproval` account (Req 7.2).
+///
+/// ## Account order (5 accounts — Ika enforces this exactly)
+/// 1. message_approval  — writable, PDA derived from `["message_approval", dwallet, message_hash]`
+/// 2. dwallet           — readonly
+/// 3. cpi_authority     — readonly, signer (our PDA via `invoke_signed`)
+/// 4. payer             — writable, signer
+/// 5. system_program    — readonly
 pub fn approve_message_cpi<'info>(
-    coordinator: AccountInfo<'info>,
     message_approval: AccountInfo<'info>,
     dwallet: AccountInfo<'info>,
-    caller_program: AccountInfo<'info>,
     cpi_authority: AccountInfo<'info>,
     payer: AccountInfo<'info>,
     system_program: AccountInfo<'info>,
+    message_approval_bump: u8,
     cpi_authority_bump: u8,
     message: &[u8],
-    message_metadata_digest: [u8; 32],
     user_pubkey: Pubkey,
-    signature_scheme: u16,
+    signature_scheme: u8,
 ) -> Result<[u8; 32]> {
-    let digest = hashv(&[message]).to_bytes();
+    let message_hash = hashv(&[message]).to_bytes();
 
-    let mut data = Vec::<u8>::with_capacity(100);
-    data.push(8); // discriminator
-    data.push(cpi_authority_bump);
-    data.extend_from_slice(&digest);
-    data.extend_from_slice(&message_metadata_digest);
-    data.extend_from_slice(&user_pubkey.to_bytes());
-    data.extend_from_slice(&signature_scheme.to_le_bytes());
-    debug_assert_eq!(data.len(), 100);
+    // 67-byte instruction data per upstream docs.
+    let mut data = Vec::<u8>::with_capacity(67);
+    data.push(8);                                       // discriminator
+    data.push(message_approval_bump);                   // PDA bump
+    data.extend_from_slice(&message_hash);              // [u8; 32]
+    data.extend_from_slice(&user_pubkey.to_bytes());    // [u8; 32]
+    data.push(signature_scheme);                        // u8
+    debug_assert_eq!(data.len(), 67);
 
     let ix = Instruction {
         program_id: IKA_PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(coordinator.key(), false),
             AccountMeta::new(message_approval.key(), false),
             AccountMeta::new_readonly(dwallet.key(), false),
-            AccountMeta::new_readonly(caller_program.key(), false),
             AccountMeta::new_readonly(cpi_authority.key(), true), // signs via PDA
             AccountMeta::new(payer.key(), true),
             AccountMeta::new_readonly(system_program.key(), false),
@@ -91,10 +120,8 @@ pub fn approve_message_cpi<'info>(
     invoke_signed(
         &ix,
         &[
-            coordinator,
             message_approval,
             dwallet,
-            caller_program,
             cpi_authority,
             payer,
             system_program,
@@ -103,5 +130,46 @@ pub fn approve_message_cpi<'info>(
     )
     .map_err(|_| VaulticError::IkaSigningFailed)?;
 
-    Ok(digest)
+    Ok(message_hash)
+}
+
+/// Read the signature from a `MessageApproval` account after Ika has signed.
+///
+/// Returns `Ok(signature_bytes)` when `status == 1` (Signed).
+/// Returns `Err(VaulticError::IkaSigningPending)` when `status == 0` (Pending).
+/// Returns `Err(VaulticError::IkaSigningFailed)` on malformed account data.
+///
+/// ## Layout (from upstream docs)
+/// - offset 139: status u8 (0=Pending, 1=Signed)
+/// - offset 140: signature_len u16 LE
+/// - offset 142: signature bytes
+pub fn read_message_approval_signature(data: &[u8]) -> Result<Vec<u8>> {
+    if data.len() <= MESSAGE_APPROVAL_STATUS_OFFSET {
+        return Err(VaulticError::IkaSigningFailed.into());
+    }
+
+    let status = data[MESSAGE_APPROVAL_STATUS_OFFSET];
+    if status != MESSAGE_APPROVAL_STATUS_SIGNED {
+        return Err(VaulticError::IkaSigningPending.into());
+    }
+
+    if data.len() < MESSAGE_APPROVAL_SIG_LEN_OFFSET + 2 {
+        return Err(VaulticError::IkaSigningFailed.into());
+    }
+
+    let sig_len = u16::from_le_bytes([
+        data[MESSAGE_APPROVAL_SIG_LEN_OFFSET],
+        data[MESSAGE_APPROVAL_SIG_LEN_OFFSET + 1],
+    ]) as usize;
+
+    if sig_len == 0 || sig_len > MAX_SIGNATURE_LEN {
+        return Err(VaulticError::IkaSigningFailed.into());
+    }
+
+    let end = MESSAGE_APPROVAL_SIG_OFFSET + sig_len;
+    if data.len() < end {
+        return Err(VaulticError::IkaSigningFailed.into());
+    }
+
+    Ok(data[MESSAGE_APPROVAL_SIG_OFFSET..end].to_vec())
 }
