@@ -49,3 +49,19 @@ export const EmployeesListQuery = z
   })
   .strict();
 export type EmployeesListQuery = z.infer<typeof EmployeesListQuery>;
+
+/**
+ * `PATCH /api/employees/:id` body — only the off-chain display fields
+ * (name, email) are mutable. On-chain compensation and vesting fields
+ * are immutable once the `register_employee` transaction is confirmed.
+ */
+export const EmployeeUpdate = z
+  .object({
+    name: z.string().min(1).max(128).optional(),
+    email: z.string().email().optional().or(z.literal("")),
+  })
+  .strict()
+  .refine((v) => v.name !== undefined || v.email !== undefined, {
+    message: 'At least one field (name or email) must be provided',
+  });
+export type EmployeeUpdate = z.infer<typeof EmployeeUpdate>;

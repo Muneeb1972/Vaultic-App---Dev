@@ -16,7 +16,7 @@ import { authMiddleware } from '../middleware/auth';
 import { readLimiter, writeLimiter } from '../middleware/rateLimit';
 import { validateBody, validateQuery } from '../middleware/validate';
 import { prisma } from '../prisma';
-import { EmployeeCreate, EmployeesListQuery } from '../schemas/employees';
+import { EmployeeCreate, EmployeesListQuery, EmployeeUpdate } from '../schemas/employees';
 
 /** Page cap for the employee listing. */
 const LIST_LIMIT = 100;
@@ -87,6 +87,50 @@ const createEmployee: RequestHandler = async (req, res, next) => {
   }
 };
 
+/**
+ * `PATCH /api/employees/:id` — update the off-chain display fields
+ * (name, email) for an existing Employee row. Authed: the signing wallet
+ * must match the parent Treasury's `authorityWallet`.
+ *
+ * On-chain compensation and vesting fields are immutable — they can only
+ * be changed by re-registering the employee on-chain.
+ */
+const updateEmployee: RequestHandler = async (req, res, next) => {
+  try {
+    const caller = req.user!.walletAddress;
+    const { id } = req.params as { id: string };
+    const body = req.body as EmployeeUpdate;
+
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+      include: { treasury: { select: { authorityWallet: true } } },
+    });
+    if (employee === null) {
+      res.status(404).json({ error: 'Employee not found', code: 'NOT_FOUND' });
+      return;
+    }
+    if (employee.treasury.authorityWallet !== caller) {
+      res.status(403).json({
+        error: 'Only the treasury authority may update employees',
+        code: 'WALLET_MISMATCH',
+      });
+      return;
+    }
+
+    const updated = await prisma.employee.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.email !== undefined ? { email: body.email || null } : {}),
+      },
+    });
+
+    res.json({ employee: updated });
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** Build the Employees router. */
 export function createEmployeesRouter(): Router {
   const router = Router();
@@ -98,6 +142,13 @@ export function createEmployeesRouter(): Router {
     authMiddleware,
     validateBody(EmployeeCreate),
     createEmployee,
+  );
+  router.patch(
+    '/:id',
+    writeLimiter,
+    authMiddleware,
+    validateBody(EmployeeUpdate),
+    updateEmployee,
   );
 
   return router;
