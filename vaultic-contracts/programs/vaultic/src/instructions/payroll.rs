@@ -71,7 +71,6 @@ use crate::state::{
 /// Accounts for `set_payroll_band_mins` — initializes the five band_min
 /// ciphertext slots (Junior, Mid, Senior, Lead, Executive).
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct SetPayrollBandMins<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -116,7 +115,7 @@ pub struct SetPayrollBandMins<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of THIS program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: This program's own executable account.
@@ -186,7 +185,6 @@ pub fn set_payroll_band_mins(
 /// Accounts for `set_payroll_band_maxs` — initializes the five band_max
 /// ciphertext slots (Junior, Mid, Senior, Lead, Executive).
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct SetPayrollBandMaxs<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -231,7 +229,7 @@ pub struct SetPayrollBandMaxs<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of THIS program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: This program's own executable account.
@@ -300,7 +298,6 @@ pub fn set_payroll_band_maxs(
 /// Accounts for `set_payroll_threshold` — initializes the performance
 /// threshold ciphertext slot and sets `bonus_multiplier_bps`.
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct SetPayrollThreshold<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -333,7 +330,7 @@ pub struct SetPayrollThreshold<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of THIS program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: This program's own executable account.
@@ -435,7 +432,7 @@ pub struct ExecutePayroll<'info> {
     /// Encrypt program treats this as the caller's authority signer.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: this program itself (Encrypt uses it to derive `caller_program`).
@@ -653,7 +650,6 @@ pub fn finalize_payroll(ctx: Context<FinalizePayroll>, _execution_id: u64) -> Re
 // --------------------------------------------------------------------------
 
 #[derive(Accounts)]
-#[instruction(cpi_authority_bump: u8)]
 pub struct ComputeBonus<'info> {
     #[account(has_one = authority @ VaulticError::Unauthorized)]
     pub treasury: Account<'info, TreasuryConfig>,
@@ -673,7 +669,7 @@ pub struct ComputeBonus<'info> {
     /// CHECK: PDA `[b"__encrypt_cpi_authority"]` of this program.
     #[account(
         seeds = [crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED],
-        bump = cpi_authority_bump,
+        bump,
     )]
     pub cpi_authority: UncheckedAccount<'info>,
     /// CHECK: this program itself.
