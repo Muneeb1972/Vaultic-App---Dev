@@ -9,7 +9,7 @@
 
 use anchor_lang::prelude::*;
 
-use crate::encrypt::{EncryptContext, ENCRYPT_CPI_AUTHORITY_SEED};
+use crate::encrypt::ENCRYPT_CPI_AUTHORITY_SEED;
 use crate::errors::VaulticError;
 use crate::events::{EmployeeRegistered, EmployeeTerminated};
 use crate::state::{EmployeeRecord, TreasuryConfig};
@@ -120,6 +120,7 @@ pub fn register_employee(
     // The `encrypt_program` and related accounts are still passed in the
     // transaction so the IDL and account layout remain unchanged.
     let _ = cpi_authority_bump; // suppress unused warning when CPI is skipped
+    let _ = (salary_plaintext, bonus_plaintext, performance_plaintext); // stored via Encrypt CPI when operational
 
     // ── Persist the three fresh pubkeys into EmployeeRecord ───────────────
     let employee_record = &mut ctx.accounts.employee_record;

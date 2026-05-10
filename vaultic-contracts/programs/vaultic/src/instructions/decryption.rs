@@ -29,6 +29,7 @@
 //! can retry after the decryptor finishes writing.
 
 use anchor_lang::prelude::*;
+use solana_keccak_hasher::hash;
 
 use crate::errors::VaulticError;
 use crate::events::{DecryptionRequested, SalaryRevealed};
@@ -153,9 +154,7 @@ pub fn request_salary_decryption(
         cpi_authority_bump,
     );
     // Use keccak of the ct_salary pubkey as a deterministic synthetic digest.
-    let digest: [u8; 32] = anchor_lang::solana_program::keccak::hash(
-        ctx.accounts.ct_salary.key().as_ref(),
-    ).to_bytes();
+    let digest: [u8; 32] = hash(ctx.accounts.ct_salary.key().as_ref()).to_bytes();
 
     // Req 5.2 — snapshot the ciphertext digest for later verification by
     // `reveal_salary`. A non-zero `pending_digest` after this instruction
