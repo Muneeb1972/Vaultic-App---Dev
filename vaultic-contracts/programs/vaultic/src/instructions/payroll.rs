@@ -475,33 +475,24 @@ pub fn execute_payroll_computation(
     execution_id: u64,
     cpi_authority_bump: u8,
 ) -> Result<()> {
+    msg!("execute_payroll_computation: start");
     // Req 1.6 — inactive treasury blocks all non-`update_treasury` paths.
     require!(
         ctx.accounts.treasury.is_active,
         VaulticError::TreasuryInactive
     );
+    msg!("execute_payroll_computation: treasury active");
 
     let now = Clock::get()?.unix_timestamp;
-    // Req 4.1 / 4.2 — enforce the minimum interval between runs. The
-    // request-time anchor (`last_payroll_timestamp = now` below) means an
-    // in-flight async FHE computation still counts as "the latest run"
-    // for interval purposes — see design §3.1.1.7 "Async completion model".
+    msg!("execute_payroll_computation: now={} last={} interval={}", now, ctx.accounts.treasury.last_payroll_timestamp, ctx.accounts.treasury.payroll_interval);
     require!(
         now.saturating_sub(ctx.accounts.treasury.last_payroll_timestamp)
             >= ctx.accounts.treasury.payroll_interval,
         VaulticError::PayrollIntervalNotElapsed
     );
+    msg!("execute_payroll_computation: interval check passed");
 
-    // DEVNET WORKAROUND: The Encrypt pre-alpha devnet program's
-    // `event_authority` PDA has never been initialized by the upstream team,
-    // so every CPI into Encrypt fails with Custom:2006 (FHEExecutionFailed).
-    // Skip the `compute_total_payout` CPI unconditionally and record
-    // `ct_total_out` directly. The Encrypt executor would normally write the
-    // computation result to this account; on devnet we treat it as a
-    // placeholder pubkey. Remove this block once the upstream team
-    // initializes the Encrypt event_authority PDA.
-    //
-    // Suppressed: unused variable warnings for the Encrypt CPI accounts.
+    // DEVNET WORKAROUND
     let _ = (
         ctx.accounts.encrypt_program.key(),
         ctx.accounts.config.key(),
@@ -512,11 +503,10 @@ pub fn execute_payroll_computation(
         ctx.accounts.event_authority.key(),
         cpi_authority_bump,
     );
+    msg!("execute_payroll_computation: workaround block done");
 
-    // Req 4.3 — open the PayrollExecution in `Processing`. `set_inner`
-    // keeps the assignment atomic and documents the full field set in one
-    // place.
     let treasury_key = ctx.accounts.treasury.key();
+    msg!("execute_payroll_computation: about to set_inner");
     ctx.accounts.payroll_execution.set_inner(PayrollExecution {
         treasury: treasury_key,
         execution_id,
@@ -529,11 +519,10 @@ pub fn execute_payroll_computation(
         policy_digest: [0; 32],
         bump: ctx.bumps.payroll_execution,
     });
+    msg!("execute_payroll_computation: set_inner done");
 
-    // Req 4.9 — request-time anchor. Setting this here prevents the
-    // interval guard from re-triggering while the async FHE run is still
-    // in flight (see design §3.1.1.7 note).
     ctx.accounts.treasury.last_payroll_timestamp = now;
+    msg!("execute_payroll_computation: timestamp updated, returning Ok");
 
     emit!(PayrollExecutionStarted {
         treasury: treasury_key,

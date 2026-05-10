@@ -169,7 +169,7 @@ export function ExecutePayrollButton({
       const sim = await connection.simulateTransaction(tx);
       if (sim.value.err) {
         const logs = sim.value.logs?.join("\n") ?? "no logs";
-        throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}\n\nLogs:\n${logs.slice(0, 600)}`);
+        throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}\n\nLogs:\n${logs.slice(0, 1200)}`);
       }
 
       return program.methods
@@ -213,8 +213,10 @@ export function ExecutePayrollButton({
     },
     onError: (err) => {
       const msg = err instanceof Error ? err.message : humanizeError(err);
+      console.error("ExecutePayroll error:", msg);
       toast.error("Payroll execution failed", {
-        description: msg.slice(0, 400),
+        description: msg.slice(0, 800),
+        duration: 15000,
       });
     },
   });
