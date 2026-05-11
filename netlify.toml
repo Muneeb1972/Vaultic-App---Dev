@@ -1,7 +1,7 @@
 [build]
   base    = "vaultic-frontend"
   command = "npm install && npm run build"
-  publish = "vaultic-frontend/.next"
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
