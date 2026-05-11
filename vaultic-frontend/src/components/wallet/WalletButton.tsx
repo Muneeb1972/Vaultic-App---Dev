@@ -3,18 +3,25 @@
 /**
  * WalletButton — thin client wrapper around `WalletMultiButton` (Task 23.1).
  *
- * The adapter's `WalletMultiButton` renders its own Connect / Disconnect /
- * address UI and opens the wallet modal mounted by `WalletModalProvider`.
- * Exposing it through our own component gives us a single place to later
- * tweak styling (e.g. matching Tailwind tokens) without touching every call
- * site, and keeps the `"use client"` directive colocated with the import.
+ * Rendered only on the client to avoid SSR/hydration mismatches caused by
+ * the wallet adapter reading browser-only state (localStorage, extensions).
  */
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import dynamic from "next/dynamic";
+
+// Dynamic import with ssr:false prevents the hydration mismatch that occurs
+// when WalletMultiButton renders differently on server vs client.
+const WalletMultiButtonDynamic = dynamic(
+  async () => {
+    const { WalletMultiButton } = await import("@solana/wallet-adapter-react-ui");
+    return WalletMultiButton;
+  },
+  { ssr: false },
+);
 
 export interface WalletButtonProps {
   className?: string;
 }
 
 export function WalletButton({ className }: WalletButtonProps) {
-  return <WalletMultiButton className={className} />;
+  return <WalletMultiButtonDynamic className={className} />;
 }
