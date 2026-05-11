@@ -69,3 +69,6 @@ vitest.config.*
 
 # Shell scripts
 *.sh
+
+# Local Netlify folder
+.netlify
