@@ -146,9 +146,9 @@ export function EmployeesTable({
                           <>
                             <Button
                               variant="outline"
-                              size="sm"
                               onClick={() => setEditOpenPda(entry.publicKey.toBase58())}
-                              className="gap-1.5 h-9 px-3 text-xs"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-9"
+                              style={{ height: "36px", minHeight: "36px" }}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                               Edit
