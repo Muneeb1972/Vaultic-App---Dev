@@ -363,11 +363,11 @@ export function LandingHero() {
         {/* CTA */}
         <div
           className="animate-fade-up delay-400 mt-10 flex flex-col items-center gap-4"
-          style={{ opacity: 0 }}
+          style={{ opacity: 0, position: "relative", zIndex: 40 }}
         >
           <div className="flex flex-wrap items-center justify-center gap-3">
             {/* Wallet button with glow */}
-            <div className="relative group">
+            <div className="relative group" style={{ zIndex: 50 }}>
               <div
                 className="absolute -inset-1 rounded-xl opacity-60 blur-lg transition-opacity duration-300 group-hover:opacity-100"
                 style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5, #3b82f6)" }}
@@ -425,6 +425,8 @@ export function LandingHero() {
           className="animate-fade-up delay-500 mt-16 grid grid-cols-4 gap-px overflow-hidden rounded-2xl"
           style={{
             opacity: 0,
+            position: "relative",
+            zIndex: 10,
             background: "rgba(99,102,241,0.15)",
             border: "1px solid rgba(99,102,241,0.2)",
           }}
