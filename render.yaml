@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: vaultic-backend
+    runtime: node
+    region: oregon
+    branch: Vaultic-Master
+    rootDir: vaultic-backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: SOLANA_RPC_URL
+        value: https://api.devnet.solana.com
+      - key: VAULTIC_PROGRAM_ID
+        value: 5igWLTbdAjGfAZKsK9G3Buhe7mkrgC3GEYkQaD4PrTnZ
+      - key: ENCRYPT_PROGRAM_ID
+        value: 4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8
+      - key: IKA_PROGRAM_ID
+        value: 87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY
+      - key: LOG_LEVEL
+        value: info
+      - key: FRONTEND_ORIGIN
+        sync: false
