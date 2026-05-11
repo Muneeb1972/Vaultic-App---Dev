@@ -148,7 +148,7 @@ export function EmployeesTable({
                               variant="outline"
                               size="sm"
                               onClick={() => setEditOpenPda(entry.publicKey.toBase58())}
-                              className="gap-1.5"
+                              className="gap-1.5 h-9 px-3 text-xs"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                               Edit
