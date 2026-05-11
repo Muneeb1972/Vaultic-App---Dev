@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, LayoutDashboard, Users, Coins, ShieldCheck } from "lucide-react";
@@ -16,12 +17,12 @@ import {
 import { WalletButton } from "@/components/wallet/WalletButton";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { href: string; label: string; exact?: boolean; icon: React.ComponentType<{ className?: string }> }[] = [
   { href: "/dashboard",            label: "Dashboard", exact: true,  icon: LayoutDashboard },
   { href: "/dashboard/employees",  label: "Employees",               icon: Users },
   { href: "/dashboard/payroll",    label: "Payroll",                 icon: Coins },
   { href: "/dashboard/policies",   label: "Policies",                icon: ShieldCheck },
-] as const;
+];
 
 function isItemActive(pathname: string | null, href: string, exact?: boolean) {
   if (!pathname) return false;

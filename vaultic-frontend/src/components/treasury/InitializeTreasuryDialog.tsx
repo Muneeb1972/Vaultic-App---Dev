@@ -65,6 +65,7 @@ type FormValues = z.infer<typeof formSchema>;
 export function InitializeTreasuryDialog() {
   const [open, setOpen] = useState(false);
   const { publicKey } = useWallet();
+  const wallet = useWallet();
   const program = useVaulticProgram();
   const queryClient = useQueryClient();
 
