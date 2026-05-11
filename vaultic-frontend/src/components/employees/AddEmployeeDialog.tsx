@@ -157,7 +157,9 @@ export function AddEmployeeDialog({
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      if (!wallet.publicKey) throw new Error("Wallet is not connected");
+      // Capture publicKey immediately — wallet context can change between renders.
+      const publicKey = wallet.publicKey;
+      if (!publicKey) throw new Error("Wallet is not connected");
 
       // Step 1: Ensure deposit (Req 3.2). Skipped on devnet — Encrypt config
       // PDA is not initialized on the pre-alpha devnet program.
@@ -195,9 +197,12 @@ export function AddEmployeeDialog({
       const vestingCliffSecs = BigInt(values.vestingCliffDays * 86_400);
       const vestingDurationSecs = BigInt(values.vestingDurationDays * 86_400);
 
+      // Build a stable wallet reference with the captured publicKey.
+      const stableWallet = { ...wallet, publicKey };
+
       const { tx, freshKeypairs } = await buildRegisterEmployeeTx({
         connection,
-        wallet,
+        wallet: stableWallet,
         treasury: treasuryPda,
         employeeWallet: employeeWalletKey,
         roleId: values.roleId,
@@ -217,7 +222,7 @@ export function AddEmployeeDialog({
       // Simulate first to surface the exact on-chain error logs.
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
       tx.recentBlockhash = blockhash;
-      tx.feePayer = wallet.publicKey;
+      tx.feePayer = publicKey;
       // Partially sign with fresh keypairs so simulation can verify signers.
       tx.partialSign(...freshKeypairs);
       const simResult = await connection.simulateTransaction(tx, undefined, true);
