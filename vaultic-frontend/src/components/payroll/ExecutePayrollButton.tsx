@@ -83,11 +83,15 @@ export function ExecutePayrollButton({
     return () => clearInterval(id);
   }, []);
 
+  const isDevnet = (process.env.NEXT_PUBLIC_CLUSTER ?? "devnet") === "devnet";
+
   const last = treasury.lastPayrollTimestamp.toNumber();
   const interval = treasury.payrollInterval.toNumber();
   const elapsed = now - last;
   const remaining = Math.max(0, interval - elapsed);
-  const canExecute = last === 0 || elapsed >= interval;
+  // On devnet the interval gate is bypassed so the demo can be run repeatedly
+  // without waiting 24 hours between executions.
+  const canExecute = isDevnet || last === 0 || elapsed >= interval;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -230,7 +234,7 @@ export function ExecutePayrollButton({
       >
         {mutation.isPending ? "Executing..." : "Execute Payroll"}
       </Button>
-      {!canExecute && last > 0 ? (
+      {!canExecute && last > 0 && !isDevnet ? (
         <p className="text-sm text-muted-foreground">
           Next payroll in {formatDuration(remaining)}
         </p>
