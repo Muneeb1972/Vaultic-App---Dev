@@ -7,9 +7,10 @@
  * Columns: wallet (short) / role tier / chain / vesting % / active / actions.
  * The on-chain record doesn't store a display name — the backend's
  * `Employee` row does — so this MVP renders the shortened wallet as the
- * primary identifier. A follow-up task can join the backend list into
- * this table.
+ * primary identifier. Backend rows are joined by `walletAddress` to
+ * pre-fill the Edit dialog with name / email.
  */
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -20,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EditEmployeeDialog } from "@/components/employees/EditEmployeeDialog";
 import { TerminateEmployeeButton } from "@/components/employees/TerminateEmployeeButton";
 import type { EmployeeEntry } from "@/hooks/useEmployees";
 import {
@@ -31,17 +33,45 @@ import {
 import { cn } from "@/lib/utils";
 import type { PublicKey } from "@solana/web3.js";
 
+/** Minimal shape of a backend Employee row needed for the Edit dialog. */
+export interface BackendEmployee {
+  id: string;
+  walletAddress: string;
+  name: string;
+  email?: string | null;
+  salarySol?: string | null;
+  bonusSol?: string | null;
+  performanceSol?: string | null;
+  roleId?: number | null;
+  chainPreference?: number | null;
+  targetAddressHex?: string | null;
+  totalAllocationSol?: string | null;
+  vestingStart?: string | null;
+  vestingCliffDays?: number | null;
+  vestingDurationDays?: number | null;
+}
+
 export interface EmployeesTableProps {
   employees: EmployeeEntry[] | undefined;
   isLoading: boolean;
   treasuryPda: PublicKey | null;
+  /** Optional backend rows — joined by walletAddress to pre-fill Edit dialog. */
+  backendEmployees?: BackendEmployee[];
 }
 
 export function EmployeesTable({
   employees,
   isLoading,
   treasuryPda,
+  backendEmployees = [],
 }: EmployeesTableProps) {
+  // Build a lookup map: walletAddress → backend row
+  const backendByWallet = new Map<string, BackendEmployee>(
+    backendEmployees.map((e) => [e.walletAddress, e]),
+  );
+
+  // Track which employee's edit dialog is open by their PDA string.
+  const [editOpenPda, setEditOpenPda] = useState<string | null>(null);
   return (
     <Card>
       <CardHeader>
@@ -72,6 +102,8 @@ export function EmployeesTable({
                   entry.account.vestingStart,
                   entry.account.vestingDuration,
                 );
+                const walletStr = entry.account.employeeWallet.toBase58();
+                const backend = backendByWallet.get(walletStr);
                 return (
                   <TableRow key={entry.publicKey.toBase58()}>
                     <TableCell className="font-mono text-xs">
@@ -107,13 +139,45 @@ export function EmployeesTable({
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      {entry.account.isActive && treasuryPda !== null ? (
-                        <TerminateEmployeeButton
-                          employeePda={entry.publicKey}
-                          employeeWallet={entry.account.employeeWallet}
-                          treasuryPda={treasuryPda}
-                        />
-                      ) : null}
+                      <div className="flex items-center justify-end gap-4">
+                        {treasuryPda !== null && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setEditOpenPda(entry.publicKey.toBase58())}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                cursor: "pointer",
+                                fontSize: "13px",
+                                fontWeight: 700,
+                                color: "rgba(165,180,252,0.9)",
+                                textDecoration: "underline",
+                                textUnderlineOffset: "3px",
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <EditEmployeeDialog
+                              entry={entry}
+                              backend={backend}
+                              treasuryPda={treasuryPda}
+                              open={editOpenPda === entry.publicKey.toBase58()}
+                              onOpenChange={(v) =>
+                                setEditOpenPda(v ? entry.publicKey.toBase58() : null)
+                              }
+                            />
+                          </>
+                        )}
+                        {entry.account.isActive && treasuryPda !== null ? (
+                          <TerminateEmployeeButton
+                            employeePda={entry.publicKey}
+                            employeeWallet={entry.account.employeeWallet}
+                            treasuryPda={treasuryPda}
+                          />
+                        ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

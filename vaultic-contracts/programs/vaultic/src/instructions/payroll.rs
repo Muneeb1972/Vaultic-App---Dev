@@ -485,12 +485,15 @@ pub fn execute_payroll_computation(
 
     let now = Clock::get()?.unix_timestamp;
     msg!("execute_payroll_computation: now={} last={} interval={}", now, ctx.accounts.treasury.last_payroll_timestamp, ctx.accounts.treasury.payroll_interval);
-    require!(
-        now.saturating_sub(ctx.accounts.treasury.last_payroll_timestamp)
-            >= ctx.accounts.treasury.payroll_interval,
-        VaulticError::PayrollIntervalNotElapsed
-    );
-    msg!("execute_payroll_computation: interval check passed");
+    // DEVNET WORKAROUND: skip interval check — Encrypt event_authority PDA not
+    // initialized on devnet pre-alpha, so we can't run real payroll cycles.
+    // Re-enable for production by removing this comment block and restoring:
+    // require!(
+    //     now.saturating_sub(ctx.accounts.treasury.last_payroll_timestamp)
+    //         >= ctx.accounts.treasury.payroll_interval,
+    //     VaulticError::PayrollIntervalNotElapsed
+    // );
+    msg!("execute_payroll_computation: interval check skipped (devnet workaround)");
 
     // DEVNET WORKAROUND
     let _ = (

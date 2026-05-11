@@ -51,6 +51,7 @@ import { useVaulticProgram } from "@/lib/anchor";
 import { humanizeError } from "@/lib/errorMessages";
 import { explorerTxUrl } from "@/lib/format";
 import { findTreasuryPda } from "@/lib/pda";
+import { signedFetch } from "@/lib/signedFetch";
 
 const formSchema = z.object({
   name: z.string().min(1, "Required").max(64, "Max 64 characters"),
@@ -88,7 +89,7 @@ export function InitializeTreasuryDialog() {
         Math.floor(values.spendingLimitSol * 1e9),
       );
 
-      return program.methods
+      const signature = await program.methods
         .initializeTreasury(
           values.name,
           payrollInterval,
@@ -102,6 +103,20 @@ export function InitializeTreasuryDialog() {
           systemProgram: SystemProgram.programId,
         })
         .rpc();
+
+      // Mirror treasury to backend so employee inserts can reference it.
+      try {
+        await signedFetch(wallet, "POST", "/api/treasury", {
+          onchainAddress: treasuryPda.toBase58(),
+          authorityWallet: publicKey.toBase58(),
+          name: values.name,
+        });
+      } catch (backendErr) {
+        // Non-fatal — on-chain is the source of truth.
+        console.warn("[Vaultic] backend treasury mirror failed:", backendErr);
+      }
+
+      return signature;
     },
     onSuccess: (signature) => {
       toast.success("Treasury initialised", {

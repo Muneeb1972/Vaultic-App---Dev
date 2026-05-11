@@ -62,6 +62,22 @@ model Employee {
   name           String
   email          String?
   createdAt      DateTime @default(now())
+
+  // Plaintext compensation values stored at registration for display/edit.
+  // Stored as strings to avoid floating-point precision loss on BigInt lamports.
+  salarySol       String?
+  bonusSol        String?
+  performanceSol  String?
+
+  // On-chain vesting / allocation fields mirrored for pre-fill in Edit dialog.
+  roleId              Int?
+  chainPreference     Int?
+  targetAddressHex    String?
+  totalAllocationSol  String?
+  vestingStart        String? // ISO date string YYYY-MM-DD
+  vestingCliffDays    Int?
+  vestingDurationDays Int?
+
   claims         Claim[]
 
   @@index([treasuryId])

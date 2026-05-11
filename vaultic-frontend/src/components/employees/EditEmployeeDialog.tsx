@@ -1,24 +1,22 @@
 "use client";
 
 /**
- * AddEmployeeDialog — plaintext-first variant.
+ * EditEmployeeDialog — identical layout to AddEmployeeDialog but pre-filled
+ * with the employee's existing data and saving via PATCH /api/employees/:id.
  *
- * Replaces the three base58 ciphertext-pubkey inputs with numeric plaintext
- * SOL inputs (salary, bonus, performance). On submit:
- *   1. `ensureDeposit` — one-time Encrypt deposit bootstrap (Req 3.2).
- *   2. `buildRegisterEmployeeTx` — generates three Fresh_Ciphertext_Keypairs,
- *      builds the instruction with the nine Encrypt_CPI_Account_Block accounts.
- *   3. `wallet.sendTransaction` — signs with admin wallet + three fresh keypairs.
- *   4. Off-chain backend mirror — best-effort POST to `/api/employees`.
+ * All fields are shown as editable inputs (same UX as registration).
+ * Compensation values (salary, bonus, performance) are pre-filled from the
+ * backend mirror stored at registration time. On-chain fields (wallet, role,
+ * chain, vesting) are pre-filled from the on-chain EmployeeEntry.
  *
- * encrypt-integration Req 1.1, Req 1.4, Req 1.6–1.8, Req 2.1–2.6,
- * Req 9.1–9.5, Req 9.11–9.12
+ * On save: sends all fields to PATCH /api/employees/:id (backend only —
+ * on-chain data is immutable without a new register_employee transaction).
  */
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -31,7 +29,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -42,31 +39,21 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import type { BackendEmployee } from "@/components/employees/EmployeesTable";
+import type { EmployeeEntry } from "@/hooks/useEmployees";
 import { humanizeError } from "@/lib/errorMessages";
-import { explorerTxUrl, hexToBytes, padBytes } from "@/lib/format";
 import { signedFetch } from "@/lib/signedFetch";
-import { buildRegisterEmployeeTx } from "@/lib/encrypt/txBuilder";
-import { classifyError, errorMessage } from "@/lib/encrypt/errorClassifier";
-import { useEnsureDeposit } from "@/hooks/useEnsureDeposit";
-import type { EncryptPhase } from "@/lib/encrypt/types";
 import type { PublicKey as PublicKeyType } from "@solana/web3.js";
 
-// ── Validation helpers ────────────────────────────────────────────────────
+// ── Schema (mirrors AddEmployeeDialog — all fields optional for edit) ─────
 
-/** Max safe u64 value as a bigint. */
 const U64_MAX = 18_446_744_073_709_551_615n;
 
-/**
- * Validate a plaintext SOL amount string.
- * - Must be a non-negative number.
- * - Lamports representation must fit in u64 (Req 1.7).
- * - Plaintext is NEVER logged (Req 9.11).
- */
 const plaintextSolAmount = z
   .string()
   .min(1, "Required")
   .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, {
-    message: "Must be a non-negative number (Req 1.6)",
+    message: "Must be a non-negative number",
   })
   .refine(
     (v) => {
@@ -77,18 +64,18 @@ const plaintextSolAmount = z
         return false;
       }
     },
-    { message: "Value exceeds maximum u64 lamports (Req 1.7)" },
+    { message: "Value exceeds maximum u64 lamports" },
   );
 
-/** Hex string up to 128 chars (= 64 bytes), OR a base58 Solana pubkey. */
 const hexOrBase58String = z
   .string()
   .min(1, "Required")
   .refine(
     (value) => {
-      // Accept base58 Solana pubkey (32 bytes = fits in 64 bytes)
-      try { new PublicKey(value); return true; } catch {}
-      // Accept hex string (with or without 0x prefix, max 128 hex chars)
+      try {
+        new PublicKey(value);
+        return true;
+      } catch {}
       const stripped = value.startsWith("0x") ? value.slice(2) : value;
       return /^[0-9a-fA-F]*$/.test(stripped) && stripped.length <= 128;
     },
@@ -102,16 +89,19 @@ const formSchema = z.object({
     .string()
     .min(32, "Must be a base58 public key")
     .refine((v) => {
-      try { new PublicKey(v); return true; } catch { return false; }
+      try {
+        new PublicKey(v);
+        return true;
+      } catch {
+        return false;
+      }
     }, { message: "Invalid base58 public key" }),
   roleId: z.coerce.number().int().min(0).max(4),
   chainPreference: z.coerce.number().int().min(0).max(2),
   targetAddressHex: hexOrBase58String,
-  // ── NEW: plaintext SOL amounts (Req 1.1) ──
   salarySol: plaintextSolAmount,
   bonusSol: plaintextSolAmount,
   performanceSol: plaintextSolAmount,
-  // ── existing plaintext fields ──
   totalAllocationSol: z.coerce.number().nonnegative(),
   vestingStart: z.string().min(1, "Required"),
   vestingCliffDays: z.coerce.number().int().nonnegative(),
@@ -120,231 +110,155 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-export interface AddEmployeeDialogProps {
+// ── Props ─────────────────────────────────────────────────────────────────
+
+export interface EditEmployeeDialogProps {
+  entry: EmployeeEntry;
+  backend?: BackendEmployee;
   treasuryPda: PublicKeyType;
-  treasuryBackendId?: string;
+  /** Controlled open state — the trigger button lives in EmployeesTable. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function AddEmployeeDialog({
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+/** Convert on-chain targetAddress bytes to a base58 string if valid, else hex. */
+function targetAddressToString(bytes: number[] | Uint8Array): string {
+  try {
+    // Trim trailing zero bytes before trying base58
+    const arr = Array.from(bytes);
+    const lastNonZero = arr.reduceRight(
+      (acc, b, i) => (acc === -1 && b !== 0 ? i : acc),
+      -1,
+    );
+    const trimmed = arr.slice(0, lastNonZero + 1);
+    if (trimmed.length === 32) {
+      return new PublicKey(new Uint8Array(trimmed)).toBase58();
+    }
+  } catch {}
+  return Buffer.from(bytes).toString("hex").replace(/0+$/, "");
+}
+
+// ── Component ─────────────────────────────────────────────────────────────
+
+export function EditEmployeeDialog({
+  entry,
+  backend,
   treasuryPda,
-  treasuryBackendId,
-}: AddEmployeeDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [encryptPhase, setEncryptPhase] = useState<EncryptPhase>({ kind: 'Idle' });
-  const { connection } = useConnection();
+  open,
+  onOpenChange,
+}: EditEmployeeDialogProps) {
   const wallet = useWallet();
   const queryClient = useQueryClient();
-  const { ensureDeposit } = useEnsureDeposit();
+
+  const { account } = entry;
+
+  // Build default values: prefer backend mirrors, fall back to on-chain data.
+  const defaultValues: FormValues = {
+    name: backend?.name ?? "",
+    email: backend?.email ?? "",
+    employeeWallet: account.employeeWallet.toBase58(),
+    roleId: backend?.roleId ?? account.roleId ?? 0,
+    chainPreference: backend?.chainPreference ?? account.chainPreference ?? 0,
+    targetAddressHex:
+      backend?.targetAddressHex ??
+      targetAddressToString(account.targetAddress),
+    salarySol: backend?.salarySol ?? "",
+    bonusSol: backend?.bonusSol ?? "",
+    performanceSol: backend?.performanceSol ?? "",
+    totalAllocationSol: backend?.totalAllocationSol
+      ? Number(backend.totalAllocationSol)
+      : account.totalAllocation
+      ? Number(account.totalAllocation) / 1e9
+      : 0,
+    vestingStart:
+      backend?.vestingStart ??
+      (account.vestingStart
+        ? new Date(Number(account.vestingStart) * 1000)
+            .toISOString()
+            .slice(0, 10)
+        : new Date().toISOString().slice(0, 10)),
+    vestingCliffDays:
+      backend?.vestingCliffDays ??
+      (account.vestingCliff
+        ? Math.round(Number(account.vestingCliff) / 86_400)
+        : 0),
+    vestingDurationDays:
+      backend?.vestingDurationDays ??
+      (account.vestingDuration
+        ? Math.round(Number(account.vestingDuration) / 86_400)
+        : 365),
+  };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      employeeWallet: "",
-      roleId: 0,
-      chainPreference: 0,
-      targetAddressHex: "",
-      salarySol: "",
-      bonusSol: "",
-      performanceSol: "1",
-      totalAllocationSol: 0,
-      vestingStart: new Date().toISOString().slice(0, 10),
-      vestingCliffDays: 0,
-      vestingDurationDays: 365,
-    },
+    defaultValues,
   });
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      // Capture publicKey immediately — wallet context can change between renders.
-      const publicKey = wallet.publicKey;
-      if (!publicKey) throw new Error("Wallet is not connected");
-
-      // Step 1: Ensure deposit (Req 3.2). Skipped on devnet — Encrypt config
-      // PDA is not initialized on the pre-alpha devnet program.
-      const isDevnet = (process.env.NEXT_PUBLIC_CLUSTER ?? "devnet") === "devnet";
-      if (!isDevnet) {
-        setEncryptPhase({ kind: 'EnsureDeposit' });
-        await ensureDeposit();
+      if (!wallet.publicKey) throw new Error("Wallet is not connected");
+      if (!backend?.id) {
+        throw new Error(
+          "No backend record found for this employee. Re-register to create one.",
+        );
       }
 
-      // Step 2: Build the plaintext-first transaction.
-      setEncryptPhase({ kind: 'Submitting', label: 'Registering employee…' });
-
-      const employeeWalletKey = new PublicKey(values.employeeWallet);
-
-      // Convert target address: accept base58 Solana pubkey or hex string.
-      let targetBytes: Uint8Array;
-      try {
-        // Try base58 first (Solana address)
-        const pk = new PublicKey(values.targetAddressHex);
-        targetBytes = padBytes(pk.toBytes(), 64);
-      } catch {
-        // Fall back to hex
-        targetBytes = padBytes(hexToBytes(values.targetAddressHex), 64);
-      }
-
-      // Convert SOL → lamports as bigint (Req 1.4, Req 9.11 — no logging).
-      const salaryLamports = BigInt(Math.round(Number(values.salarySol) * 1e9));
-      const bonusLamports = BigInt(Math.round(Number(values.bonusSol) * 1e9));
-      const performanceLamports = BigInt(Math.round(Number(values.performanceSol) * 1e9));
-      const totalAllocationLamports = BigInt(Math.round(values.totalAllocationSol * 1e9));
-
-      const vestingStartSecs = BigInt(
-        Math.floor(new Date(values.vestingStart).getTime() / 1000),
-      );
-      const vestingCliffSecs = BigInt(values.vestingCliffDays * 86_400);
-      const vestingDurationSecs = BigInt(values.vestingDurationDays * 86_400);
-
-      // Build a stable wallet reference with the captured publicKey.
-      const stableWallet = { ...wallet, publicKey };
-
-      const { tx, freshKeypairs } = await buildRegisterEmployeeTx({
-        connection,
-        wallet: stableWallet,
-        treasury: treasuryPda,
-        employeeWallet: employeeWalletKey,
+      return signedFetch(wallet, "PATCH", `/api/employees/${backend.id}`, {
+        name: values.name,
+        email: values.email || undefined,
+        salarySol: values.salarySol,
+        bonusSol: values.bonusSol,
+        performanceSol: values.performanceSol,
         roleId: values.roleId,
-        plaintexts: {
-          salary: salaryLamports,
-          bonus: bonusLamports,
-          performance: performanceLamports,
-        },
-        vestingStart: vestingStartSecs,
-        vestingCliff: vestingCliffSecs,
-        vestingDuration: vestingDurationSecs,
-        totalAllocation: totalAllocationLamports,
         chainPreference: values.chainPreference,
-        targetAddress: targetBytes,
+        targetAddressHex: values.targetAddressHex,
+        totalAllocationSol: String(values.totalAllocationSol),
+        vestingStart: values.vestingStart,
+        vestingCliffDays: values.vestingCliffDays,
+        vestingDurationDays: values.vestingDurationDays,
       });
-
-      // Simulate first to surface the exact on-chain error logs.
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = publicKey;
-      // Partially sign with fresh keypairs so simulation can verify signers.
-      tx.partialSign(...freshKeypairs);
-      const simResult = await connection.simulateTransaction(tx, undefined, true);
-      if (simResult.value.err) {
-        const logs = simResult.value.logs?.join('\n') ?? 'no logs';
-        console.error('[Vaultic] simulate error:', simResult.value.err);
-        console.error('[Vaultic] simulate logs:\n', logs);
-        throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}\n\nLogs:\n${logs}`);
-      }
-
-      // Step 3: Sign and send (Req 2.2 — fresh keypairs as additional signers).
-      const signature = await wallet.sendTransaction!(tx, connection, {
-        signers: freshKeypairs,
-      });
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      // Drop fresh keypairs immediately after confirmation (Req 2.5).
-      freshKeypairs.length = 0;
-
-      // Step 4: Off-chain mirror — best-effort.
-      const [employeePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('employee'), treasuryPda.toBuffer(), employeeWalletKey.toBuffer()],
-        new PublicKey(process.env.NEXT_PUBLIC_VAULTIC_PROGRAM_ID ?? '5igWLTbdAjGfAZKsK9G3Buhe7mkrgC3GEYkQaD4PrTnZ'),
-      );
-
-      if (treasuryBackendId) {
-        try {
-          await signedFetch(wallet, "POST", "/api/employees", {
-            onchainAddress: employeePda.toBase58(),
-            treasuryId: treasuryBackendId,
-            walletAddress: employeeWalletKey.toBase58(),
-            name: values.name,
-            ...(values.email ? { email: values.email } : {}),
-            // Mirror plaintext compensation + vesting for Edit pre-fill.
-            salarySol: values.salarySol,
-            bonusSol: values.bonusSol,
-            performanceSol: values.performanceSol,
-            roleId: values.roleId,
-            chainPreference: values.chainPreference,
-            targetAddressHex: values.targetAddressHex,
-            totalAllocationSol: String(values.totalAllocationSol),
-            vestingStart: values.vestingStart,
-            vestingCliffDays: values.vestingCliffDays,
-            vestingDurationDays: values.vestingDurationDays,
-          });
-        } catch (backendErr) {
-          toast.warning("On-chain succeeded but backend insert failed", {
-            description: humanizeError(backendErr),
-          });
-        }
-      }
-
-      return signature;
     },
-    onSuccess: (signature) => {
-      setEncryptPhase({ kind: 'Done', signature });
-      toast.success("Employee registered", {
-        description: (
-          <a
-            href={explorerTxUrl(signature)}
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            View transaction
-          </a>
-        ),
-      });
+    onSuccess: () => {
+      toast.success("Employee details updated");
       queryClient.invalidateQueries({
         queryKey: ["employees", treasuryPda.toBase58()],
       });
-      queryClient.invalidateQueries({ queryKey: ["treasury"] });
-      // Clear form state so plaintexts are eligible for GC (Req 9.12).
-      form.reset();
-      setOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: ["backendEmployees"],
+      });
+      onOpenChange(false);
     },
     onError: (err) => {
-      const type = classifyError(err, encryptPhase);
-      const msg = errorMessage(type, err);
-      setEncryptPhase({ kind: 'Error', type, message: msg });
-      // Show full error including simulation logs for debugging
-      const fullMsg = err instanceof Error ? err.message : msg;
-      toast.error("Registration failed", { description: fullMsg.slice(0, 300) });
+      toast.error("Update failed", { description: humanizeError(err) });
     },
   });
 
   const isSubmitting = mutation.isPending;
-  const phaseLabel =
-    encryptPhase.kind === 'EnsureDeposit'
-      ? 'Setting up encrypted deposit…'
-      : encryptPhase.kind === 'Submitting'
-      ? encryptPhase.label
-      : null;
+
+  function handleOpenChange(v: boolean) {
+    onOpenChange(v);
+    if (!v) form.reset(defaultValues);
+  }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (!v) {
-          // Clear plaintext state on dialog close (Req 9.12).
-          form.reset();
-          setEncryptPhase({ kind: 'Idle' });
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button>Add Employee</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Register new employee</DialogTitle>
+          <DialogTitle>Edit Employee Details</DialogTitle>
           <DialogDescription>
             Enter plaintext SOL amounts — they are encrypted on-chain via the
             Encrypt protocol. No ciphertext pubkeys needed.
           </DialogDescription>
         </DialogHeader>
+
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
             className="space-y-4"
           >
+            {/* Name + Email */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -374,6 +288,7 @@ export function AddEmployeeDialog({
               />
             </div>
 
+            {/* Employee wallet */}
             <FormField
               control={form.control}
               name="employeeWallet"
@@ -381,13 +296,14 @@ export function AddEmployeeDialog({
                 <FormItem>
                   <FormLabel>Employee wallet (base58)</FormLabel>
                   <FormControl>
-                    <Input {...field} className="font-mono" />
+                    <Input {...field} className="font-mono" readOnly />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
+            {/* Role + Chain */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -433,6 +349,7 @@ export function AddEmployeeDialog({
               />
             </div>
 
+            {/* Target address */}
             <FormField
               control={form.control}
               name="targetAddressHex"
@@ -440,14 +357,18 @@ export function AddEmployeeDialog({
                 <FormItem>
                   <FormLabel>Target address (Solana base58 or hex)</FormLabel>
                   <FormControl>
-                    <Input {...field} className="font-mono" placeholder="Paste Solana address or hex bytes…" />
+                    <Input
+                      {...field}
+                      className="font-mono"
+                      placeholder="Paste Solana address or hex bytes…"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* ── NEW: Plaintext SOL inputs (Req 1.1) ── */}
+            {/* Compensation */}
             <div className="space-y-4">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
                 Compensation (plaintext SOL — encrypted on-chain)
@@ -460,7 +381,13 @@ export function AddEmployeeDialog({
                     <FormItem>
                       <FormLabel>Salary (SOL)</FormLabel>
                       <FormControl>
-                        <Input {...field} type="number" step="0.001" min="0" placeholder="10" />
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="10"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -473,7 +400,13 @@ export function AddEmployeeDialog({
                     <FormItem>
                       <FormLabel>Bonus (SOL)</FormLabel>
                       <FormControl>
-                        <Input {...field} type="number" step="0.001" min="0" placeholder="2" />
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="2"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -486,7 +419,13 @@ export function AddEmployeeDialog({
                     <FormItem>
                       <FormLabel>Performance score (SOL)</FormLabel>
                       <FormControl>
-                        <Input {...field} type="number" step="0.001" min="0" placeholder="1" />
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="1"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -495,6 +434,7 @@ export function AddEmployeeDialog({
               </div>
             </div>
 
+            {/* Vesting */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -550,28 +490,17 @@ export function AddEmployeeDialog({
               />
             </div>
 
-            {/* Phase indicator (Req 9.2–9.3) */}
-            {phaseLabel && (
-              <p className="text-sm text-muted-foreground animate-pulse">
-                {phaseLabel}
-              </p>
-            )}
-            {encryptPhase.kind === 'Error' && (
-              <p className="text-sm text-destructive whitespace-pre-wrap break-all">{encryptPhase.message}</p>
-            )}
-
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setOpen(false)}
+                onClick={() => onOpenChange(false)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              {/* Disable submit while any phase is active (Req 9.5) */}
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (phaseLabel ?? "Registering…") : "Register"}
+                {isSubmitting ? "Saving…" : "Save Changes"}
               </Button>
             </DialogFooter>
           </form>

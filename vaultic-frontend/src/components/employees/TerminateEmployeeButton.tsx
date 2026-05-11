@@ -82,14 +82,25 @@ export function TerminateEmployeeButton({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button
-        variant="destructive"
-        size="sm"
+      <button
+        type="button"
         onClick={() => setOpen(true)}
         disabled={mutation.isPending}
+        style={{
+          background: "none",
+          border: "none",
+          padding: 0,
+          cursor: mutation.isPending ? "not-allowed" : "pointer",
+          fontSize: "13px",
+          fontWeight: 700,
+          color: "rgba(248,113,113,0.9)",
+          textDecoration: "underline",
+          textUnderlineOffset: "3px",
+          opacity: mutation.isPending ? 0.5 : 1,
+        }}
       >
         Terminate
-      </Button>
+      </button>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Terminate employee?</DialogTitle>

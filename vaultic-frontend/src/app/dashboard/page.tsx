@@ -2,7 +2,6 @@
 
 import { AlertCircle, TrendingUp } from "lucide-react";
 import { PayrollRunsList } from "@/components/payroll/PayrollRunsList";
-import { DWalletBadge } from "@/components/treasury/DWalletBadge";
 import { TreasuryStats } from "@/components/treasury/TreasuryStats";
 import { usePayrollRuns } from "@/hooks/usePayrollRuns";
 import { useTreasury } from "@/hooks/useTreasury";
@@ -111,14 +110,9 @@ export default function DashboardHome() {
           isLoading={isLoading}
         />
 
-        {/* ── dWallet + Payroll runs ───────────────────────────────── */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-1">
-            <DWalletBadge treasury={treasury} />
-          </div>
-          <div className="lg:col-span-2">
-            <PayrollRunsList runs={runs} isLoading={runsLoading} limit={10} />
-          </div>
+        {/* ── Payroll runs ────────────────────────────────────────── */}
+        <div>
+          <PayrollRunsList runs={runs} isLoading={runsLoading} limit={10} />
         </div>
 
         {/* ── Quick actions strip ──────────────────────────────────── */}
