@@ -2,6 +2,10 @@
   "name": "vaultic-frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x",
+    "npm": ">=10"
+  },
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
