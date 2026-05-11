@@ -88,6 +88,7 @@ export function TerminateEmployeeButton({
         size="sm"
         onClick={() => setOpen(true)}
         disabled={mutation.isPending}
+        className="rounded-xl"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Terminate
