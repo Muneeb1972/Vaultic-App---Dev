@@ -71,7 +71,7 @@ export function PayrollHistoryTable({
               <TableRow>
                 <TableHead>Execution ID</TableHead>
                 <TableHead>Started</TableHead>
-                <TableHead>In Progress</TableHead>
+                <TableHead>Completed</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Employees</TableHead>
               </TableRow>
