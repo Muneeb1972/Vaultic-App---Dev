@@ -71,7 +71,7 @@ export function PayrollHistoryTable({
               <TableRow>
                 <TableHead>Execution ID</TableHead>
                 <TableHead>Started</TableHead>
-                <TableHead>Completed</TableHead>
+                <TableHead>In Progress</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Employees</TableHead>
               </TableRow>
@@ -79,6 +79,10 @@ export function PayrollHistoryTable({
             <TableBody>
               {runs.map((run) => {
                 const status = extractStatus(run.account.status);
+                const completedDisplay =
+                  status === "processing" || status === "pending"
+                    ? "In Progress"
+                    : formatUnixTimestamp(run.account.completedAt);
                 return (
                   <TableRow key={run.publicKey.toBase58()}>
                     <TableCell className="font-mono">
@@ -88,7 +92,7 @@ export function PayrollHistoryTable({
                       {formatUnixTimestamp(run.account.startedAt)}
                     </TableCell>
                     <TableCell>
-                      {formatUnixTimestamp(run.account.completedAt)}
+                      {completedDisplay}
                     </TableCell>
                     <TableCell>
                       <span
