@@ -10,8 +10,11 @@
  * primary identifier. Backend rows are joined by `walletAddress` to
  * pre-fill the Edit dialog with name / email.
  */
+import { useState } from "react";
+import { Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -68,6 +71,9 @@ export function EmployeesTable({
   const backendByWallet = new Map<string, BackendEmployee>(
     backendEmployees.map((e) => [e.walletAddress, e]),
   );
+
+  // Track which employee's edit dialog is open by their PDA string.
+  const [editOpenPda, setEditOpenPda] = useState<string | null>(null);
   return (
     <Card>
       <CardHeader>
@@ -137,11 +143,26 @@ export function EmployeesTable({
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         {treasuryPda !== null && (
-                          <EditEmployeeDialog
-                            entry={entry}
-                            backend={backend}
-                            treasuryPda={treasuryPda}
-                          />
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditOpenPda(entry.publicKey.toBase58())}
+                              className="gap-1.5"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                            <EditEmployeeDialog
+                              entry={entry}
+                              backend={backend}
+                              treasuryPda={treasuryPda}
+                              open={editOpenPda === entry.publicKey.toBase58()}
+                              onOpenChange={(v) =>
+                                setEditOpenPda(v ? entry.publicKey.toBase58() : null)
+                              }
+                            />
+                          </>
                         )}
                         {entry.account.isActive && treasuryPda !== null ? (
                           <TerminateEmployeeButton

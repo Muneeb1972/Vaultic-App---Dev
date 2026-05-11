@@ -17,7 +17,6 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -117,6 +116,9 @@ export interface EditEmployeeDialogProps {
   entry: EmployeeEntry;
   backend?: BackendEmployee;
   treasuryPda: PublicKeyType;
+  /** Controlled open state — the trigger button lives in EmployeesTable. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -144,8 +146,9 @@ export function EditEmployeeDialog({
   entry,
   backend,
   treasuryPda,
+  open,
+  onOpenChange,
 }: EditEmployeeDialogProps) {
-  const [open, setOpen] = useState(false);
   const wallet = useWallet();
   const queryClient = useQueryClient();
 
@@ -225,7 +228,7 @@ export function EditEmployeeDialog({
       queryClient.invalidateQueries({
         queryKey: ["backendEmployees"],
       });
-      setOpen(false);
+      onOpenChange(false);
     },
     onError: (err) => {
       toast.error("Update failed", { description: humanizeError(err) });
@@ -235,22 +238,12 @@ export function EditEmployeeDialog({
   const isSubmitting = mutation.isPending;
 
   function handleOpenChange(v: boolean) {
-    setOpen(v);
+    onOpenChange(v);
     if (!v) form.reset(defaultValues);
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setOpen(true)}
-        className="gap-1.5 px-3 text-xs h-9"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-        Edit
-      </Button>
-
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Employee Details</DialogTitle>
@@ -501,7 +494,7 @@ export function EditEmployeeDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setOpen(false)}
+                onClick={() => onOpenChange(false)}
                 disabled={isSubmitting}
               >
                 Cancel
