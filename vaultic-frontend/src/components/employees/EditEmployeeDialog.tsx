@@ -30,6 +30,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -241,15 +242,16 @@ export function EditEmployeeDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setOpen(true)}
-        className="gap-1.5 px-3 text-xs"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-        Edit
-      </Button>
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 px-3 text-xs"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Edit
+        </Button>
+      </DialogTrigger>
 
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
