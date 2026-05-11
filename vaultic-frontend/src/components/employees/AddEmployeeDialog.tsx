@@ -159,9 +159,13 @@ export function AddEmployeeDialog({
     mutationFn: async (values: FormValues) => {
       if (!wallet.publicKey) throw new Error("Wallet is not connected");
 
-      // Step 1: Ensure deposit (Req 3.2). Phase indicator shown during bootstrap.
-      setEncryptPhase({ kind: 'EnsureDeposit' });
-      await ensureDeposit();
+      // Step 1: Ensure deposit (Req 3.2). Skipped on devnet — Encrypt config
+      // PDA is not initialized on the pre-alpha devnet program.
+      const isDevnet = (process.env.NEXT_PUBLIC_CLUSTER ?? "devnet") === "devnet";
+      if (!isDevnet) {
+        setEncryptPhase({ kind: 'EnsureDeposit' });
+        await ensureDeposit();
+      }
 
       // Step 2: Build the plaintext-first transaction.
       setEncryptPhase({ kind: 'Submitting', label: 'Registering employee…' });
