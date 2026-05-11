@@ -144,15 +144,29 @@ export function EmployeesTable({
                       <div className="flex items-center justify-end gap-2">
                         {treasuryPda !== null && (
                           <>
-                            <Button
-                              variant="outline"
-                              size="sm"
+                            <button
+                              type="button"
                               onClick={() => setEditOpenPda(entry.publicKey.toBase58())}
-                              className="rounded-xl"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                height: "32px",
+                                padding: "0 12px",
+                                fontSize: "12px",
+                                fontWeight: 500,
+                                borderRadius: "6px",
+                                border: "1px solid rgba(255,255,255,0.15)",
+                                background: "transparent",
+                                color: "white",
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                boxSizing: "border-box",
+                              }}
                             >
-                              <Pencil className="h-3.5 w-3.5" />
+                              <Pencil style={{ width: "13px", height: "13px" }} />
                               Edit
-                            </Button>
+                            </button>
                             <EditEmployeeDialog
                               entry={entry}
                               backend={backend}

@@ -83,16 +83,31 @@ export function TerminateEmployeeButton({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button
-        variant="destructive"
-        size="sm"
+      <button
+        type="button"
         onClick={() => setOpen(true)}
         disabled={mutation.isPending}
-        className="rounded-xl border border-red-700"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          height: "32px",
+          padding: "0 12px",
+          fontSize: "12px",
+          fontWeight: 500,
+          borderRadius: "6px",
+          border: "1px solid rgba(185,28,28,0.8)",
+          background: "rgb(220,38,38)",
+          color: "white",
+          cursor: mutation.isPending ? "not-allowed" : "pointer",
+          opacity: mutation.isPending ? 0.6 : 1,
+          whiteSpace: "nowrap",
+          boxSizing: "border-box",
+        }}
       >
-        <Trash2 className="h-3.5 w-3.5" />
+        <Trash2 style={{ width: "13px", height: "13px" }} />
         Terminate
-      </Button>
+      </button>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Terminate employee?</DialogTitle>
