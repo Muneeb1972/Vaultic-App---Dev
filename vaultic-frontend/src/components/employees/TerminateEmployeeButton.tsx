@@ -12,7 +12,6 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type PublicKey } from "@solana/web3.js";
-import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -88,24 +87,17 @@ export function TerminateEmployeeButton({
         onClick={() => setOpen(true)}
         disabled={mutation.isPending}
         style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          height: "32px",
-          padding: "0 12px",
-          fontSize: "12px",
-          fontWeight: 500,
-          borderRadius: "6px",
-          border: "1px solid rgba(255,255,255,0.15)",
-          background: "rgb(220,38,38)",
-          color: "white",
+          background: "none",
+          border: "none",
+          padding: 0,
           cursor: mutation.isPending ? "not-allowed" : "pointer",
-          opacity: mutation.isPending ? 0.6 : 1,
-          whiteSpace: "nowrap",
-          boxSizing: "border-box",
+          fontSize: "13px",
+          color: "rgba(248,113,113,0.9)",
+          textDecoration: "underline",
+          textUnderlineOffset: "3px",
+          opacity: mutation.isPending ? 0.5 : 1,
         }}
       >
-        <Trash2 style={{ width: "13px", height: "13px" }} />
         Terminate
       </button>
       <DialogContent>

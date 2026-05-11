@@ -11,10 +11,8 @@
  * pre-fill the Edit dialog with name / email.
  */
 import { useState } from "react";
-import { Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -141,30 +139,23 @@ export function EmployeesTable({
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-4">
                         {treasuryPda !== null && (
                           <>
                             <button
                               type="button"
                               onClick={() => setEditOpenPda(entry.publicKey.toBase58())}
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                height: "32px",
-                                padding: "0 12px",
-                                fontSize: "12px",
-                                fontWeight: 500,
-                                borderRadius: "6px",
-                                border: "1px solid rgba(255,255,255,0.15)",
-                                background: "transparent",
-                                color: "white",
+                                background: "none",
+                                border: "none",
+                                padding: 0,
                                 cursor: "pointer",
-                                whiteSpace: "nowrap",
-                                boxSizing: "border-box",
+                                fontSize: "13px",
+                                color: "rgba(165,180,252,0.9)",
+                                textDecoration: "underline",
+                                textUnderlineOffset: "3px",
                               }}
                             >
-                              <Pencil style={{ width: "13px", height: "13px" }} />
                               Edit
                             </button>
                             <EditEmployeeDialog
