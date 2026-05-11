@@ -151,6 +151,7 @@ export function EmployeesTable({
                                 padding: 0,
                                 cursor: "pointer",
                                 fontSize: "13px",
+                                fontWeight: 700,
                                 color: "rgba(165,180,252,0.9)",
                                 textDecoration: "underline",
                                 textUnderlineOffset: "3px",

@@ -92,6 +92,7 @@ export function TerminateEmployeeButton({
           padding: 0,
           cursor: mutation.isPending ? "not-allowed" : "pointer",
           fontSize: "13px",
+          fontWeight: 700,
           color: "rgba(248,113,113,0.9)",
           textDecoration: "underline",
           textUnderlineOffset: "3px",
