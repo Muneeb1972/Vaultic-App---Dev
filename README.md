@@ -573,3 +573,494 @@ See [vaultic-contracts/KNOWN_ISSUES.md](vaultic-contracts/KNOWN_ISSUES.md) for t
 ## License
 
 TBD.
+
+
+---
+
+## Diagrams and Workflows
+
+### 1. System Architecture Overview
+
+```mermaid
+graph TB
+    subgraph SOLANA["Solana Layer — Trust and State"]
+        VP["Vaultic Program\n5igWLT...rTnZ"]
+        PDAs["7 PDAs\nTreasuryConfig · EmployeeRecord\nPayrollExecution · ClaimRecord\nPayrollConfig · PolicyAccount\nTransactionProposal"]
+    end
+
+    subgraph ENCRYPT["Encrypt Layer — Privacy and FHE"]
+        EP["Encrypt Program\n4ebfzW...rND8"]
+        CT["Ciphertext Accounts\nencrypted salary · bonus\nperformance · salary bands"]
+        FX["FHE Executor\noff-chain compute node"]
+    end
+
+    subgraph IKA["Ika Layer — Cross-Chain Execution"]
+        IP["Ika Program\n87W54k...q1oY"]
+        DW["dWallet\ndistributed key"]
+        MPC["MPC Validator Network\nthreshold signing"]
+        TC["Target Chains\nETH / BTC / SOL"]
+    end
+
+    subgraph OFFCHAIN["Off-Chain Infrastructure"]
+        FE["Frontend\nNext.js / Vercel"]
+        BE["Backend\nExpress / Render"]
+        DB[("PostgreSQL\nNeon")]
+    end
+
+    FE -->|wallet tx| VP
+    FE -->|REST + SSE| BE
+    BE --> DB
+    BE -->|RPC subscribe| VP
+    VP -->|Anchor CPI| EP
+    VP -->|raw CPI| IP
+    EP --> CT
+    EP -->|GraphExecuted event| FX
+    FX -->|commit result| CT
+    IP --> DW
+    DW -->|threshold request| MPC
+    MPC -->|CommitSignature| IP
+    BE -->|broadcast signed tx| TC
+```
+
+---
+
+### 2. Treasury Initialization Flow
+
+```mermaid
+flowchart TD
+    A([Admin connects wallet]) --> B["Fill treasury form\nname · payroll interval\nspending limit · approvers"]
+    B --> C["Frontend builds\ninitialize_treasury tx"]
+    C --> D{Wallet signs}
+    D -->|rejected| E([Error shown])
+    D -->|approved| F[Solana processes tx]
+    F --> G["TreasuryConfig PDA created\nseeds: b-treasury + authority"]
+    G --> H["Backend mirrors treasury\nPOST /api/treasury"]
+    H --> I["Dashboard unlocked\nadmin role confirmed"]
+    I --> J([Treasury ready])
+
+    style G fill:#6366f1,color:#fff
+    style J fill:#22c55e,color:#fff
+    style E fill:#ef4444,color:#fff
+```
+
+---
+
+### 3. Employee Registration Flow
+
+```mermaid
+flowchart TD
+    A(["Admin enters employee details\nname · wallet · role · salary SOL\nbonus · performance · vesting"]) --> B["Frontend converts\nSOL amounts to lamports bigint"]
+    B --> C["buildRegisterEmployeeTx\ngenerates 3 fresh keypairs\nfor salary · bonus · performance"]
+    C --> D["Encrypt CPI\ncreate_plaintext_ciphertext x3\nplaintext never leaves client"]
+    D --> E["3 ciphertext accounts created\nowned by Encrypt program"]
+    E --> F["register_employee instruction\nciphertext pubkeys as args"]
+    F --> G["EmployeeRecord PDA created\nseeds: b-employee + treasury + wallet"]
+    G --> H["Encrypted refs stored on-chain\nno plaintext anywhere"]
+    H --> I["Fresh keypairs zeroed\nfrom memory"]
+    I --> J["Backend mirrors employee\nPOST /api/employees"]
+    J --> K([Employee visible in dashboard])
+
+    style D fill:#8b5cf6,color:#fff
+    style E fill:#8b5cf6,color:#fff
+    style G fill:#6366f1,color:#fff
+    style K fill:#22c55e,color:#fff
+```
+
+---
+
+### 4. Payroll Execution Flow
+
+```mermaid
+flowchart TD
+    A([Admin clicks Execute Payroll]) --> B{Interval elapsed?}
+    B -->|No| C([PayrollIntervalNotElapsed])
+    B -->|Yes| D["Generate fresh ct_total_out keypair"]
+    D --> E["execute_payroll_computation tx\nexec_id · cpi_authority_bump"]
+    E --> F["Vaultic CPI to Encrypt\nexecute_graph compute_total_payout\nct_salary + ct_bonus + ct_performance\nct_band_min + ct_band_max"]
+    F --> G["PayrollExecution PDA created\nstatus = Processing"]
+    G --> H["last_payroll_timestamp = now\ninterval guard reset"]
+    H --> I["FHE Executor picks up\nGraphExecuted event"]
+    I --> J["FHE computation runs\noff-chain on encrypted data"]
+    J --> K["Result committed to\nct_total_out ciphertext account"]
+    K --> L["Backend detects\nCiphertextCommitted via RPC"]
+    L --> M["SSE update to frontend"]
+    M --> N["finalize_payroll tx"]
+    N --> O["Verify ct_total_out committed"]
+    O --> P["PayrollExecution status = Completed"]
+    P --> Q([Payroll history updated])
+
+    style F fill:#8b5cf6,color:#fff
+    style J fill:#8b5cf6,color:#fff
+    style G fill:#6366f1,color:#fff
+    style Q fill:#22c55e,color:#fff
+    style C fill:#ef4444,color:#fff
+```
+
+---
+
+### 5. Cross-Chain Salary Claim Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Emp as Employee Wallet
+    participant FE as Frontend
+    participant VP as Vaultic Program
+    participant IP as Ika Program
+    participant MPC as Ika MPC Network
+    participant BE as Backend
+    participant ETH as Ethereum / Bitcoin
+
+    Emp->>FE: Submit claim (amount, target chain = ETH)
+    FE->>VP: submit_claim(amount, claim_timestamp)
+    VP->>VP: Check is_active, vesting cliff passed
+    VP->>VP: Check amount <= vested - claimed
+    VP->>VP: Check amount <= spending_limit
+    VP->>VP: Create ClaimRecord PDA {Pending}
+    VP-->>FE: ClaimSubmitted event
+    FE->>VP: process_claim(message_bytes, cpi_bump)
+    VP->>VP: keccak256(message) = digest
+    VP->>IP: raw CPI approve_message(digest, scheme=Secp256k1)
+    IP-->>VP: MessageApproval {Pending}
+    VP-->>FE: IkaSigningRequested event
+    Note over MPC: No bridge. No wrapped tokens. No custodian.
+    MPC->>MPC: Validators reach threshold consensus
+    MPC->>IP: CommitSignature (native ETH sig)
+    BE->>BE: Detect MessageApproval {Signed}
+    BE-->>FE: SSE update — signature ready
+    BE->>ETH: Broadcast signed native ETH transaction
+    ETH-->>BE: Transaction confirmed
+    BE->>VP: Update ClaimRecord {Executed}
+    FE-->>Emp: Payment confirmed on Ethereum
+```
+
+---
+
+### 6. Multi-Sig Policy Enforcement Flow
+
+```mermaid
+flowchart TD
+    A([Admin creates spending policy]) --> B["create_policy tx\nspending_limit · time_lock\nrequired_approvers · approver_wallets"]
+    B --> C["PolicyAccount PDA created\nseeds: b-policy + treasury + policy_id"]
+    C --> D([Policy active])
+
+    E([Admin proposes transaction]) --> F["propose_transaction tx\nnonce · amount · target"]
+    F --> G{amount <= spending_limit?}
+    G -->|No| H([SpendingLimitExceeded])
+    G -->|Yes| I["TransactionProposal PDA created\nproposed_at = now"]
+
+    I --> J["Approver calls\napprove_transaction"]
+    J --> K{time_lock elapsed?}
+    K -->|No| L([TimeLockNotElapsed])
+    K -->|Yes| M["approval_count += 1"]
+    M --> N{approval_count >= required?}
+    N -->|No| O([Wait for more signers])
+    N -->|Yes| P["proposal.executed = true\ntransaction gate open"]
+    P --> Q([Execution proceeds])
+
+    style C fill:#6366f1,color:#fff
+    style I fill:#6366f1,color:#fff
+    style P fill:#22c55e,color:#fff
+    style H fill:#ef4444,color:#fff
+    style L fill:#ef4444,color:#fff
+    style O fill:#f59e0b,color:#fff
+```
+
+---
+
+### 7. FHE Encryption Lifecycle
+
+```mermaid
+flowchart LR
+    subgraph CLIENT["Client Side"]
+        PT["Plaintext\ne.g. 10 SOL salary"]
+    end
+
+    subgraph ENCRYPT_PROG["Encrypt Program — Solana"]
+        CT["Ciphertext Account\nencrypted bytes\nowned by Encrypt"]
+        GRAPH["FHE Computation Graph\ncompute_total_payout\ncheck_policy_compliance"]
+        CT_OUT["Output Ciphertext\nencrypted result"]
+    end
+
+    subgraph FHE_EXEC["FHE Executor — Off-Chain"]
+        COMPUTE["Homomorphic Computation\nno decryption needed"]
+    end
+
+    subgraph DECRYPT["Authorized Decryption"]
+        REQ["DecryptionRequest\nby employee only"]
+        PLAIN["Plaintext via set_return_data\nnever stored on-chain"]
+    end
+
+    PT -->|"create_plaintext_ciphertext CPI"| CT
+    CT -->|"execute_graph CPI"| GRAPH
+    GRAPH -->|"GraphExecuted event"| COMPUTE
+    COMPUTE -->|"commit result"| CT_OUT
+    CT_OUT -->|"request_decryption CPI"| REQ
+    REQ -->|"read_decrypted_verified"| PLAIN
+
+    style PT fill:#22c55e,color:#fff
+    style CT fill:#8b5cf6,color:#fff
+    style CT_OUT fill:#8b5cf6,color:#fff
+    style COMPUTE fill:#8b5cf6,color:#fff
+    style PLAIN fill:#6366f1,color:#fff
+```
+
+---
+
+### 8. dWallet Signing Architecture
+
+```mermaid
+flowchart TD
+    subgraph VAULTIC["Vaultic Program"]
+        POLICY["Policy Check\nspending_limit · time_lock · approvals"]
+        CPI["raw CPI\napprove_message\ndigest + scheme"]
+    end
+
+    subgraph IKA_PROG["Ika Program — Solana"]
+        MA["MessageApproval PDA\nstatus: Pending"]
+        SIG["Signature committed\nstatus: Signed"]
+    end
+
+    subgraph IKA_NET["Ika MPC Network — Off-Chain"]
+        V1["Validator 1\nkey share"]
+        V2["Validator 2\nkey share"]
+        V3["Validator 3\nkey share"]
+        VN["Validator N\nkey share"]
+        THRESH["Threshold Consensus\ne.g. 7-of-10"]
+    end
+
+    subgraph TARGET["Target Chain"]
+        ETH["Ethereum tx\nnative signature"]
+        BTC["Bitcoin tx\nnative signature"]
+    end
+
+    POLICY -->|"all checks pass"| CPI
+    CPI --> MA
+    MA --> V1 & V2 & V3 & VN
+    V1 & V2 & V3 & VN --> THRESH
+    THRESH -->|"threshold reached"| SIG
+    SIG -->|"backend broadcasts"| ETH
+    SIG -->|"backend broadcasts"| BTC
+
+    style THRESH fill:#8b5cf6,color:#fff
+    style SIG fill:#22c55e,color:#fff
+    style POLICY fill:#6366f1,color:#fff
+```
+
+---
+
+### 9. Program Account Structure (PDAs)
+
+```mermaid
+erDiagram
+    TreasuryConfig {
+        Pubkey authority
+        Pubkey dwallet_id
+        String name
+        i64 payroll_interval
+        u64 spending_limit_per_tx
+        u8 required_approvers
+        u32 total_employees
+        i64 last_payroll_timestamp
+        bool is_active
+        u8 bump
+    }
+
+    EmployeeRecord {
+        Pubkey treasury
+        Pubkey employee_wallet
+        u8 role_id
+        bytes32 encrypted_salary
+        bytes32 encrypted_bonus
+        bytes32 encrypted_performance
+        i64 vesting_start
+        i64 vesting_cliff
+        i64 vesting_duration
+        u64 total_allocation
+        u64 total_claimed
+        u8 chain_preference
+        bytes64 target_address
+        bytes32 pending_digest
+        bool is_active
+    }
+
+    PayrollConfig {
+        Pubkey treasury
+        bytes32x5 band_min
+        bytes32x5 band_max
+        bytes32 performance_threshold
+        u16 bonus_multiplier_bps
+    }
+
+    PayrollExecution {
+        Pubkey treasury
+        u64 execution_id
+        enum status
+        i64 started_at
+        i64 completed_at
+        u32 employees_processed
+        bytes32 total_payout_ref
+        bytes32 ika_message_hash
+    }
+
+    PolicyAccount {
+        Pubkey treasury
+        u64 policy_id
+        u64 spending_limit
+        i64 time_lock
+        u8 required_approvers
+        Pubkeyx5 approvers
+        bool is_active
+    }
+
+    ClaimRecord {
+        Pubkey employee
+        Pubkey treasury
+        i64 claim_timestamp
+        u64 amount_claimed
+        u8 target_chain
+        bytes64 target_address
+        enum status
+        bytes32 ika_message_hash
+        bytes96 ika_signature
+    }
+
+    TransactionProposal {
+        Pubkey treasury
+        Pubkey policy
+        u64 nonce
+        u64 amount
+        Pubkey target
+        i64 proposed_at
+        boolx5 approvers_signed
+        u8 approval_count
+        bool executed
+    }
+
+    TreasuryConfig ||--o{ EmployeeRecord : "has many"
+    TreasuryConfig ||--o| PayrollConfig : "has one"
+    TreasuryConfig ||--o{ PayrollExecution : "has many"
+    TreasuryConfig ||--o{ PolicyAccount : "has many"
+    TreasuryConfig ||--o{ TransactionProposal : "has many"
+    EmployeeRecord ||--o{ ClaimRecord : "has many"
+```
+
+---
+
+### 10. End-to-End User Journey
+
+```mermaid
+flowchart TD
+    subgraph SETUP["Phase 1 — Treasury Setup"]
+        A([DAO connects wallet]) --> B["Initialize Treasury\nspending limits + payroll interval"]
+        B --> C["Configure Payroll\nencrypt salary bands per role tier"]
+        C --> D["Create Spending Policy\nM-of-N approvers + time-lock"]
+    end
+
+    subgraph ONBOARD["Phase 2 — Employee Onboarding"]
+        E["Register Employee\nplaintext salary input"] --> F["Encrypt FHE\nsalary encrypted on-chain"]
+        F --> G["EmployeeRecord PDA\nvesting schedule set"]
+    end
+
+    subgraph PAYROLL["Phase 3 — Payroll Run"]
+        H["Execute Payroll\nFHE computes total payout"] --> I["Policy compliance check\nencrypted amount vs limit"]
+        I --> J["PayrollExecution PDA\nstatus = Processing"]
+        J --> K["FHE Executor commits result\nstatus = Completed"]
+    end
+
+    subgraph CLAIM["Phase 4 — Cross-Chain Claim"]
+        L["Employee submits claim\nchooses ETH payout"] --> M["Vaultic verifies\nvesting + policy"]
+        M --> N["Ika MPC signs\nnative ETH transaction"]
+        N --> O["ETH lands in\nemployee wallet"]
+    end
+
+    D --> E
+    G --> H
+    K --> L
+    O --> P(["Settlement complete\nno bridge · no custodian"])
+
+    style A fill:#6366f1,color:#fff
+    style P fill:#22c55e,color:#fff
+    style F fill:#8b5cf6,color:#fff
+    style N fill:#8b5cf6,color:#fff
+```
+
+---
+
+### 11. Database Schema
+
+```mermaid
+erDiagram
+    Treasury {
+        String id PK
+        String onchainAddress UK
+        String authorityWallet
+        String name
+        DateTime createdAt
+        String dwalletPubkey
+        Int dwalletCurveType
+        DWalletStatus dwalletStatus
+        DateTime dkgStartedAt
+        DateTime dkgCompletedAt
+    }
+
+    Employee {
+        String id PK
+        String onchainAddress UK
+        String treasuryId FK
+        String walletAddress
+        String name
+        String email
+        String salarySol
+        String bonusSol
+        String performanceSol
+        Int roleId
+        Int chainPreference
+        String targetAddressHex
+        String totalAllocationSol
+        String vestingStart
+        Int vestingCliffDays
+        Int vestingDurationDays
+        DateTime createdAt
+    }
+
+    PayrollRun {
+        String id PK
+        String treasuryId FK
+        String onchainAddress UK
+        BigInt executionId
+        String status
+        DateTime timestamp
+        Int employeesProcessed
+        String ikaMessageHash
+    }
+
+    Claim {
+        String id PK
+        String employeeId FK
+        String treasuryId FK
+        String onchainAddress UK
+        BigInt amount
+        Int targetChain
+        String status
+        String ikaMessageHash
+        String ikaSignature
+        DateTime submittedAt
+        DateTime processedAt
+    }
+
+    AuditLog {
+        String id PK
+        String actionType
+        String actorWallet
+        String treasuryId FK
+        Json metadata
+        DateTime timestamp
+    }
+
+    Treasury ||--o{ Employee : "employs"
+    Treasury ||--o{ PayrollRun : "runs"
+    Treasury ||--o{ Claim : "processes"
+    Treasury ||--o{ AuditLog : "logs"
+    Employee ||--o{ Claim : "submits"
+```
